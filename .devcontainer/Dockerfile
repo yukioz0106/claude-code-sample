@@ -35,7 +35,10 @@ RUN set -eux; \
     # Fail if script is empty or suspiciously small (< 1KB)
     [ "$(wc -c < /tmp/claude-install.sh)" -gt 1024 ] && \
     bash /tmp/claude-install.sh stable && \
+    # for specific version:
+    # bash /tmp/claude-install.sh {version} && \
     rm -f /tmp/claude-install.sh
+    
 # Ensure Claude Code binary is on PATH
 ENV PATH="/root/.local/bin:${PATH}"
 
