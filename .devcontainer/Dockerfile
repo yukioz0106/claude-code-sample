@@ -38,7 +38,7 @@ RUN set -eux; \
     # for specific version:
     # bash /tmp/claude-install.sh {version} && \
     rm -f /tmp/claude-install.sh
-    
+
 # Ensure Claude Code binary is on PATH
 ENV PATH="/root/.local/bin:${PATH}"
 
