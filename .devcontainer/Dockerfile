@@ -6,15 +6,15 @@ RUN rm -f /etc/apt/sources.list.d/yarn.list
 
 # Install basic packages and AWS CLI dependencies
 RUN apt-get update && apt-get install -y \
-    curl \
-    vim \
-    git \
-    make \
-    unzip \
-    groff \
-    less \
-    iputils-ping \
-    ca-certificates \
+    curl="7.74.0-1.3+deb11u16" \
+    vim="2:8.2.2434-3+deb11u3" \
+    git="1:2.30.2-1+deb11u5" \
+    make="4.3-4.1" \
+    unzip="6.0-26+deb11u1" \
+    groff="1.22.4-6" \
+    less="551-2+deb11u2" \
+    iputils-ping="3:20210202-1" \
+    ca-certificates="20230311+deb12u1~deb11u1" \
     && rm -rf /var/lib/apt/lists/*
 
 # Install AWS CLI v2
@@ -34,7 +34,9 @@ RUN set -eux; \
         https://claude.ai/install.sh -o /tmp/claude-install.sh && \
     # Fail if script is empty or suspiciously small (< 1KB)
     [ "$(wc -c < /tmp/claude-install.sh)" -gt 1024 ] && \
-    bash /tmp/claude-install.sh && \
+    bash /tmp/claude-install.sh stable && \
+    # for specific version:
+    # bash /tmp/claude-install.sh {version} && \
     rm -f /tmp/claude-install.sh
 
 # Ensure Claude Code binary is on PATH
