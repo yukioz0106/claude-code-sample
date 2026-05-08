@@ -8,10 +8,6 @@
         ".devcontainer/.env",
         "--name", "claude-code-<your-name>"  //名前の変更
     ],
-  "containerEnv": {
-    "no_proxy": "",
-    "NO_PROXY": ""
-  },
   "privileged": true,
   "remoteUser": "root",
 }
