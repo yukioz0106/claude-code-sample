@@ -10,10 +10,22 @@ Claude CodeはAnthropic社が提供するAIアシスタント「Claude」のCLI�
 ## 使い方
 
 1. このリポジトリをクローン
-2. .env.sampleを.envに名前変更して、各環境変数に必要な情報を入力
-3. devcontainer.jsonにて2箇所の<your-name>を自分の名前に変更
-4. devcontainerを展開（VSCodeでreopen in container）
-5. ターミナルに"claude"を入力（claude codeを展開）
+2. ホスト側の `~/.aws/credentials` に Bedrock 用の AWS 認証情報を設定
+3. 必要に応じて `devcontainer.json` のコンテナ名を変更
+4. .env.sampleを.envにリネーム
+5. devcontainerを展開（VSCodeでreopen in container）
+6. ターミナルに"claude"を入力（claude codeを展開）
+
+Claude Code の Bedrock 利用設定は `.claude/settings.json` に定義しています。
+`AWS_PROFILE` はデフォルトで `bedrock` を参照するため、`~/.aws/credentials` には以下のようなプロファイルを用意してください。
+
+```
+[bedrock]
+aws_access_key_id=...
+aws_secret_access_key=...
+```
+
+別のプロファイル名を使う場合は、`.claude/settings.json` の `AWS_PROFILE` を変更してください。
 
 ## 機能
 
@@ -25,6 +37,7 @@ Claude CodeはAnthropic社が提供するAIアシスタント「Claude」のCLI�
 
 ## ENEOS社内LAN経由での接続について
 
+※現在スパコン構成の変更によりオンプレでは適応不可、EC2では使用可能
 ※この機能が特に不要で、かつ”Unable to connect to API (ConnectionRefused)”というエラーが出る場合は、「"containerEnv": {"no_proxy": ~~~~~~},」の部分を削除すればClaudeCodeは問題無く使用できる \
 devcontainer.json内の"containerEnv"にてBedrockに対してno_proxy設定をしており、
 外部インターネットを経由しない閉域ルート（社内LAN->DirectConnect->Bedrock）での接続が可能です。
