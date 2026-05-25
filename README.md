@@ -25,8 +25,8 @@ Claude CodeはAnthropic社が提供するAIアシスタント「Claude」のCLI�
   }
 }
 ```
-4. devcontainerを展開（VSCodeでreopen in container）
-5. ターミナルに"claude"を入力（claude codeを展開）
+5. devcontainerを展開（VSCodeでreopen in container）
+6. ターミナルに"claude"を入力（claude codeを展開）
 
 Claude Code の Bedrock 利用設定は `.claude/settings.json` に定義しています。
 `AWS_PROFILE` はデフォルトで `bedrock` を参照するため、`~/.aws/credentials` には以下のようなプロファイルを用意してください。
