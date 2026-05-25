@@ -10,7 +10,7 @@ Claude CodeはAnthropic社が提供するAIアシスタント「Claude」のCLI�
 ## 使い方
 
 1. このリポジトリをクローン
-2. ホスト側の `~/.aws/credentials` に Bedrock 用の AWS 認証情報を設定 (or .env.sampleを.envにリネーム)
+2. ホスト側の `~/.aws/credentials` に Bedrock 用の AWS 認証情報を設定
 3. `devcontainer.json` のコンテナ名を自分の名前など一意なものに変更
 4. 必要に応じてsettings.jsonを以下の通りに変更
 ```
