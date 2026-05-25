@@ -4,10 +4,10 @@
     "dockerfile": "Dockerfile"
   },    
   "runArgs": [
-        "--env-file",
-        ".devcontainer/.env",
         "--name", "claude-code-<your-name>"  //名前の変更
     ],
-  "privileged": true,
-  "remoteUser": "root",
+  "remoteUser": "vscode",
+  "mounts": [
+    "source=${localEnv:HOME}/.aws,target=/home/vscode/.aws,type=bind,readonly"
+  ]
 }

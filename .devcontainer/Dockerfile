@@ -29,6 +29,7 @@ RUN set -eux; \
 #   - Script is downloaded separately and inspected before execution
 #   - TLS certificate verification is enforced (default with curl)
 #   - Execution is scoped to this build step only
+USER vscode
 RUN set -eux; \
     curl -fsSL --proto '=https' --tlsv1.2 \
         https://claude.ai/install.sh -o /tmp/claude-install.sh && \
@@ -40,7 +41,7 @@ RUN set -eux; \
     rm -f /tmp/claude-install.sh
 
 # Ensure Claude Code binary is on PATH
-ENV PATH="/root/.local/bin:${PATH}"
+ENV PATH="/home/vscode/.local/bin:${PATH}"
 
 # Set working directory
 WORKDIR /workspace
