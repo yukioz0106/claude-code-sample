@@ -10,11 +10,23 @@ Claude CodeはAnthropic社が提供するAIアシスタント「Claude」のCLI�
 ## 使い方
 
 1. このリポジトリをクローン
-2. ホスト側の `~/.aws/credentials` に Bedrock 用の AWS 認証情報を設定
-3. 必要に応じて `devcontainer.json` のコンテナ名を変更
-4. .env.sampleを.envにリネーム
-5. devcontainerを展開（VSCodeでreopen in container）
-6. ターミナルに"claude"を入力（claude codeを展開）
+2. ホスト側の `~/.aws/credentials` に Bedrock 用の AWS 認証情報を設定 (or .env.sampleを.envにリネーム)
+3. `devcontainer.json` のコンテナ名を自分の名前など一意なものに変更
+4. 必要に応じてsettings.jsonを以下の通りに変更
+```
+{
+  "effortLevel": "high",
+  "env": {
+    "CLAUDE_CODE_USE_BEDROCK": "1",
+    "AWS_REGION": "ap-northeast-1",
+    "AWS_PROFILE": "bedrock",  //.aws/credentialsにてこのプロファイル名を指定
+    "ANTHROPIC_MODEL": "arn:aws:bedrock:ap-northeast-1:013958956098:inference-profile/<claude-model-id>",  //<claude-model-id>には使用したいモデルのIDを記載 Ex. global.anthropic.claude-sonnet-4-6
+    "ANTHROPIC_SMALL_FAST_MODEL": "arn:aws:bedrock:ap-northeast-1:013958956098:inference-profile/<claude-fast-model-id>"  //# <claude-fast-model-id>には使用したい軽量モデルのIDを記載 Ex. global.anthropic.claude-haiku-4-5-20251001-v1:0
+  }
+}
+```
+4. devcontainerを展開（VSCodeでreopen in container）
+5. ターミナルに"claude"を入力（claude codeを展開）
 
 Claude Code の Bedrock 利用設定は `.claude/settings.json` に定義しています。
 `AWS_PROFILE` はデフォルトで `bedrock` を参照するため、`~/.aws/credentials` には以下のようなプロファイルを用意してください。

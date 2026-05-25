@@ -1,14 +1,13 @@
 {
-  "name": "claude-code-hara",  //名前の変更
+  "name": "claude-code-<your-name>",  //名前の変更
   "build": {
     "dockerfile": "Dockerfile"
   },    
   "runArgs": [
-        "--name", "claude-code-hara"  //名前の変更
+        "--name", "claude-code-<your-name>"  //名前の変更
     ],
-  "privileged": true,
-  "remoteUser": "root",
+  "remoteUser": "vscode",
   "mounts": [
-    "source=${localEnv:HOME}/.aws,target=/root/.aws,type=bind,readonly"
+    "source=${localEnv:HOME}/.aws,target=/home/vscode/.aws,type=bind,readonly"
   ]
 }
