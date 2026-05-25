@@ -49,7 +49,7 @@ aws_secret_access_key=...
 
 ## ENEOS社内LAN経由での接続について
 
-※現在スパコン構成の変更によりオンプレでは適応不可、EC2では使用可能
+※現在スパコン構成の変更によりオンプレでは適用不可、EC2では使用可能
 ※この機能が特に不要で、かつ”Unable to connect to API (ConnectionRefused)”というエラーが出る場合は、「"containerEnv": {"no_proxy": ~~~~~~},」の部分を削除すればClaudeCodeは問題無く使用できる \
 devcontainer.json内の"containerEnv"にてBedrockに対してno_proxy設定をしており、
 外部インターネットを経由しない閉域ルート（社内LAN->DirectConnect->Bedrock）での接続が可能です。
