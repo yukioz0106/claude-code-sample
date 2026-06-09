@@ -9,5 +9,13 @@
   "remoteUser": "vscode",
   "mounts": [
     "source=${localEnv:HOME}/.aws,target=/home/vscode/.aws,type=bind,readonly"
-  ]
+  ],
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "extensions.autoUpdate": false,
+        "extensions.autoCheckUpdates": false
+      }
+    }
+  }
 }
