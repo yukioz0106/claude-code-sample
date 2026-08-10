@@ -1,3 +1,7 @@
+x-podman:
+  # podman-compose 1.5+ は既定で Pod を作成するが、--pod と --userns は併用できない。
+  in_pod: false
+
 x-common: &common
   build:
     context: .
@@ -15,13 +19,8 @@ x-common: &common
     - ${HOME}/.aws:/home/vscode/.aws:ro
   working_dir: /workspace
   command: ["sleep", "infinity"]
-  environment:
-    HTTP_PROXY: ${HTTP_PROXY:-}
-    HTTPS_PROXY: ${HTTPS_PROXY:-}
-    http_proxy: ${http_proxy:-}
-    https_proxy: ${https_proxy:-}
-    NO_PROXY: ${NO_PROXY:-}
-    no_proxy: ${no_proxy:-}
+  # 実行時の環境変数は env_file から読み込む。
+  # environment に同名キーを置くと、空文字でも env_file より優先される。
   env_file:
     - path: .env
       required: false

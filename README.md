@@ -1,25 +1,32 @@
 # Claude Code Sample Repository
 
-Claude Code を AWS Bedrock 経由で利用するための標準リポジトリです。開発環境は rootless Podman と VS Code Dev Containers で起動します。Docker デーモンは使用しません。
+Claude Code を AWS Bedrock 経由で利用するための標準リポジトリです。開発環境は rootless Podman と VS Code Dev Containers で起動します。Docker デーモンおよび Docker Compose は使用しません。
 
 ## 前提
 
 - Linux ホストに rootless Podman が導入済みであること
-- `podman compose version` が成功すること
-- rootless Podman ソケットが起動していること
+- `podman-compose` 1.5 以降が導入済みであること
+- `podman compose version` が `podman-compose` をプロバイダーとして実行すること
 - VS Code に Dev Containers 拡張機能が導入済みであること
 - ホストの `~/.aws/credentials` に Bedrock 用の AWS 認証情報があること
 
 Dev Containers の Podman 互換性は Podman 5 以降が公式の目安です。社内標準環境で別バージョンを使う場合は、本リポジトリの構成検証コマンドが成功することを確認してください。
 
-Podman Compose が利用するユーザーソケットを起動します。
+`podman compose` は外部の Compose プロバイダーを呼び出すラッパーです。Docker Compose を選択させないため、`~/.config/containers/containers.conf` の既存の `[engine]` セクションに次の設定を追加します。セクションがない場合は、設定例のとおり作成してください。
 
-```bash
-systemctl --user start podman.socket
-systemctl --user is-active podman.socket
+```toml
+[engine]
+compose_providers = ["podman-compose"]
 ```
 
-ログイン後に自動起動させる運用が許可されている場合は、`systemctl --user enable --now podman.socket` で有効化できます。
+設定後、両方のコマンドが `podman-compose` 1.5 以降を表示することを確認します。
+
+```bash
+podman-compose --version
+podman compose version
+```
+
+ホスト設定を変更せず一時的に試す場合は、`PODMAN_COMPOSE_PROVIDER=podman-compose code .` のように VS Code を起動します。`podman-compose` は Podman CLI を直接実行するため、Podman API ソケットの起動は不要です。
 
 ## 初回設定
 
@@ -29,13 +36,11 @@ VS Code のユーザー設定 `settings.json` に以下を追加します。
 
 ```json
 {
-  "dev.containers.dockerPath": "podman",
-  "dev.containers.dockerComposePath": "podman",
-  "dev.containers.dockerSocketPath": "${XDG_RUNTIME_DIR}/podman/podman.sock"
+  "dev.containers.dockerPath": "podman"
 }
 ```
 
-設定名には互換 API の都合で `docker` が残っていますが、実行コマンドには `podman` を指定しています。Container Tools 拡張機能向けの Podman 設定は `.vscode/settings.json` に定義済みです。
+設定名には互換 API の都合で `docker` が残っていますが、実行コマンドには `podman` を指定しています。`dev.containers.dockerComposePath` は設定せず、Dev Containers が `dockerPath` を基に呼び出す `podman compose` と、前述の `podman-compose` プロバイダーを使用します。Container Tools 拡張機能向けの Podman 設定は `.vscode/settings.json` に定義済みです。
 
 ### 2. AWS 認証情報を用意する
 
@@ -56,7 +61,9 @@ Compose は以下の任意ファイルを読み込みます。どちらも存在
 - `.devcontainer/.env`: このリポジトリのコンテナだけで使う値
 - `/cafe05/${USER}/.env`: スパコン環境でユーザーが共通利用する値
 
-`.devcontainer/.sample.env` をコピーして利用できます。`.env` は Git 管理対象外です。ホストの大文字・小文字の proxy 環境変数もビルド時と実行時に引き継ぎます。
+`.devcontainer/.sample.env` をコピーして利用できます。`.env` は Git 管理対象外です。同じ変数が両方にある場合は、後から読み込む `/cafe05/${USER}/.env` の値が優先されます。
+
+ホストの大文字・小文字の proxy 環境変数は、イメージのビルド引数として引き継ぎます。コンテナ実行時にも必要な proxy 環境変数は、上記いずれかの `.env` に記載してください。Compose の `environment` には同名変数を定義していないため、ホスト側で未設定の変数が空文字として `env_file` の値を上書きすることはありません。
 
 ## 起動
 
@@ -89,6 +96,8 @@ podman images localhost/claude-code-sample
 
 - `privileged` は使用しません。
 - rootless Podman と `userns_mode: keep-id` を使用します。
+- Compose プロバイダーは `podman-compose` 1.5 以降に固定し、Docker Compose は使用しません。
+- `podman-compose` の既定の Pod 作成は `x-podman.in_pod: false` で無効化し、`userns_mode: keep-id` と両立させます。
 - 外部のベースイメージは `mcr.microsoft.com/...`、生成イメージは `localhost/...` の完全修飾名を使用します。
 - ワークスペースは `/workspace`、実行ユーザーは `vscode` です。
 - `Dockerfile` と `devcontainer.json` の `dockerComposeFile` は Dev Containers / OCI ツール間で使われる互換上の名称です。コンテナのビルドと実行は Podman が担当します。
@@ -109,5 +118,7 @@ NO_PROXY=bedrock.ap-northeast-1.amazonaws.com,bedrock-runtime.ap-northeast-1.ama
 ## 参考リンク
 
 - [VS Code: Alternate ways to install Docker (Podman)](https://code.visualstudio.com/remote/advancedcontainers/docker-options)
+- [Podman: podman compose](https://docs.podman.io/en/latest/markdown/podman-compose.1.html)
+- [Podman Compose](https://github.com/containers/podman-compose)
 - [Claude Code 公式ドキュメント](https://code.claude.com/docs/ja/overview)
 - [AWS Bedrock 対応モデル一覧](https://docs.aws.amazon.com/ja_jp/bedrock/latest/userguide/inference-profiles-support.html)
