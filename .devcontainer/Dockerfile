@@ -1,6 +1,15 @@
 ARG VARIANT="3.12-bullseye"
 FROM mcr.microsoft.com/vscode/devcontainers/python:${VARIANT}
 
+# Forward proxy settings only while building. They are deliberately not
+# persisted with ENV so that host-specific values do not remain in the image.
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG http_proxy
+ARG https_proxy
+ARG NO_PROXY
+ARG no_proxy
+
 # Remove invalid Yarn repo (GPG key expired in base image)
 RUN rm -f /etc/apt/sources.list.d/yarn.list
 
@@ -14,7 +23,7 @@ RUN apt-get update && apt-get install -y \
     groff="1.22.4-6" \
     less="551-2+deb11u2" \
     iputils-ping="3:20210202-1" \
-    ca-certificates="20230311+deb12u1~deb11u1" \
+    ca-certificates="20250419~deb12u1~deb11u1" \
     && rm -rf /var/lib/apt/lists/*
 
 # Install AWS CLI v2

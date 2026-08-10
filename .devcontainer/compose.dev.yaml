@@ -1,0 +1,5 @@
+services:
+  dev:
+    env_file:
+      - path: /cafe05/${USER}/.env
+        required: false

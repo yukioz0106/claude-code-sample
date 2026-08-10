@@ -1,74 +1,113 @@
 # Claude Code Sample Repository
 
-このリポジトリはClaude Codeを使用するためのサンプルプロジェクトです。\
-生成AI APIは基盤技術Tが配備したAWSのbedrockを利用します。
+Claude Code を AWS Bedrock 経由で利用するための標準リポジトリです。開発環境は rootless Podman と VS Code Dev Containers で起動します。Docker デーモンは使用しません。
 
-## Claude Codeについて
+## 前提
 
-Claude CodeはAnthropic社が提供するAIアシスタント「Claude」のCLIツールです。コードの作成、編集、デバッグ、リファクタリングなど、様々なプログラミングタスクを支援します。
+- Linux ホストに rootless Podman が導入済みであること
+- `podman compose version` が成功すること
+- rootless Podman ソケットが起動していること
+- VS Code に Dev Containers 拡張機能が導入済みであること
+- ホストの `~/.aws/credentials` に Bedrock 用の AWS 認証情報があること
 
-## 使い方
+Dev Containers の Podman 互換性は Podman 5 以降が公式の目安です。社内標準環境で別バージョンを使う場合は、本リポジトリの構成検証コマンドが成功することを確認してください。
 
-1. このリポジトリをクローン
-2. ホスト側の `~/.aws/credentials` に Bedrock 用の AWS 認証情報を設定
-3. `devcontainer.json` のコンテナ名を自分の名前など一意なものに変更
-4. 必要に応じてsettings.jsonを以下の通りに変更
+Podman Compose が利用するユーザーソケットを起動します。
+
+```bash
+systemctl --user start podman.socket
+systemctl --user is-active podman.socket
 ```
+
+ログイン後に自動起動させる運用が許可されている場合は、`systemctl --user enable --now podman.socket` で有効化できます。
+
+## 初回設定
+
+### 1. VS Code から Podman を使う
+
+VS Code のユーザー設定 `settings.json` に以下を追加します。
+
+```json
 {
-  "effortLevel": "high",
-  "env": {
-    "CLAUDE_CODE_USE_BEDROCK": "1",
-    "AWS_REGION": "ap-northeast-1",
-    "AWS_PROFILE": "bedrock",  //.aws/credentialsにてこのプロファイル名を指定
-    "ANTHROPIC_MODEL": "arn:aws:bedrock:ap-northeast-1:013958956098:inference-profile/<claude-model-id>",  //<claude-model-id>には使用したいモデルのIDを記載 Ex. global.anthropic.claude-sonnet-4-6
-    "ANTHROPIC_SMALL_FAST_MODEL": "arn:aws:bedrock:ap-northeast-1:013958956098:inference-profile/<claude-fast-model-id>"  //# <claude-fast-model-id>には使用したい軽量モデルのIDを記載 Ex. global.anthropic.claude-haiku-4-5-20251001-v1:0
-  }
+  "dev.containers.dockerPath": "podman",
+  "dev.containers.dockerComposePath": "podman",
+  "dev.containers.dockerSocketPath": "${XDG_RUNTIME_DIR}/podman/podman.sock"
 }
 ```
-5. devcontainerを展開（VSCodeでreopen in container）
-6. ターミナルに"claude"を入力（claude codeを展開）
 
-Claude Code の Bedrock 利用設定は `.claude/settings.json` に定義しています。
-`AWS_PROFILE` はデフォルトで `bedrock` を参照するため、`~/.aws/credentials` には以下のようなプロファイルを用意してください。
+設定名には互換 API の都合で `docker` が残っていますが、実行コマンドには `podman` を指定しています。Container Tools 拡張機能向けの Podman 設定は `.vscode/settings.json` に定義済みです。
 
-```
+### 2. AWS 認証情報を用意する
+
+`.claude/settings.json` の `AWS_PROFILE` はデフォルトで `bedrock` です。ホストの `~/.aws/credentials` に同名のプロファイルを用意します。
+
+```ini
 [bedrock]
 aws_access_key_id=...
 aws_secret_access_key=...
 ```
 
-別のプロファイル名を使う場合は、`.claude/settings.json` の `AWS_PROFILE` を変更してください。
+`~/.aws` はコンテナの `/home/vscode/.aws` に read-only でマウントされます。別のプロファイル名を使う場合は `.claude/settings.json` の `AWS_PROFILE` を変更してください。
 
-## 機能
+### 3. 必要に応じて環境変数を設定する
 
-- コード生成と編集
-- バグ修正とデバッグ支援
-- リファクタリング
-- テスト作成
-- ドキュメント生成
+Compose は以下の任意ファイルを読み込みます。どちらも存在しない場合は無視されます。
 
-## ENEOS社内LAN経由での接続について
+- `.devcontainer/.env`: このリポジトリのコンテナだけで使う値
+- `/cafe05/${USER}/.env`: スパコン環境でユーザーが共通利用する値
 
-※現在スパコン構成の変更によりオンプレでは適用不可、EC2では使用可能
-※この機能が特に不要で、かつ”Unable to connect to API (ConnectionRefused)”というエラーが出る場合は、「"containerEnv": {"no_proxy": ~~~~~~},」の部分を削除すればClaudeCodeは問題無く使用できる \
-devcontainer.json内の"containerEnv"にてBedrockに対してno_proxy設定をしており、
-外部インターネットを経由しない閉域ルート（社内LAN->DirectConnect->Bedrock）での接続が可能です。
-適切に接続されているかは以下コマンドで確認。
+`.devcontainer/.sample.env` をコピーして利用できます。`.env` は Git 管理対象外です。ホストの大文字・小文字の proxy 環境変数もビルド時と実行時に引き継ぎます。
 
+## 起動
+
+1. このリポジトリをクローンします。
+2. VS Code でリポジトリを開きます。
+3. `Dev Containers: Reopen in Container` を実行します。
+4. コンテナ内のターミナルで `claude` を実行します。
+
+ユーザーごとの手動コンテナ名設定は不要です。Compose のプロジェクト名と `localhost/claude-code-sample:dev-${USER}` イメージ名で分離します。
+
+## 構成の確認
+
+Dev Container を起動する前に、次のコマンドで Compose 設定を検証できます。
+
+```bash
+podman compose \
+  -f .devcontainer/compose.yaml \
+  -f .devcontainer/compose.dev.yaml \
+  config
 ```
-echo $no_proxy
-```
-bedrock.ap-northeast-1.amazonaws.com,bedrock-runtime.ap-northeast-1.amazonaws.com
-```
-curl -v https://bedrock-runtime.ap-northeast-1.amazonaws.com
-```
-* Uses proxy env variable no_proxy == 'bedrock.ap-northeast-1.amazonaws.com,bedrock-runtime.ap-northeast-1.amazonaws.com'
-*   Trying 10.81.16.181:443...
-* Connected to bedrock-runtime.ap-northeast-1.amazonaws.com (10.81.16.181) port 443 (#0)
 
+起動後は次のコマンドで、Docker ではなく Podman がコンテナを管理していることを確認できます。
+
+```bash
+podman ps
+podman images localhost/claude-code-sample
+```
+
+## Podman 運用方針
+
+- `privileged` は使用しません。
+- rootless Podman と `userns_mode: keep-id` を使用します。
+- 外部のベースイメージは `mcr.microsoft.com/...`、生成イメージは `localhost/...` の完全修飾名を使用します。
+- ワークスペースは `/workspace`、実行ユーザーは `vscode` です。
+- `Dockerfile` と `devcontainer.json` の `dockerComposeFile` は Dev Containers / OCI ツール間で使われる互換上の名称です。コンテナのビルドと実行は Podman が担当します。
+
+## Claude Code / Bedrock の設定
+
+Claude Code の Bedrock 利用設定は `.claude/settings.json` に定義しています。利用モデルやリージョンを変更する場合は、同ファイルの `ANTHROPIC_MODEL`、`ANTHROPIC_SMALL_FAST_MODEL`、`AWS_REGION` を更新します。
+
+社内 LAN から Direct Connect 経由で Bedrock に接続する場合は、必要に応じて `.devcontainer/.env` または `/cafe05/${USER}/.env` に次のような設定を追加します。
+
+```dotenv
+no_proxy=bedrock.ap-northeast-1.amazonaws.com,bedrock-runtime.ap-northeast-1.amazonaws.com
+NO_PROXY=bedrock.ap-northeast-1.amazonaws.com,bedrock-runtime.ap-northeast-1.amazonaws.com
+```
+
+コンテナ内では `echo "$no_proxy"` と `curl -v https://bedrock-runtime.ap-northeast-1.amazonaws.com` で経路を確認できます。
 
 ## 参考リンク
 
+- [VS Code: Alternate ways to install Docker (Podman)](https://code.visualstudio.com/remote/advancedcontainers/docker-options)
 - [Claude Code 公式ドキュメント](https://code.claude.com/docs/ja/overview)
 - [AWS Bedrock 対応モデル一覧](https://docs.aws.amazon.com/ja_jp/bedrock/latest/userguide/inference-profiles-support.html)
-※プロンプトデータを国内に留めておきたい特別な事情が無い限り、"global.~~"のモデルでok
