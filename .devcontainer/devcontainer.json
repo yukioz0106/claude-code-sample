@@ -1,15 +1,33 @@
 {
-  "name": "claude-code-<your-name>",  //名前の変更
+  "name": "${localWorkspaceFolderBasename}",
   "build": {
-    "dockerfile": "Dockerfile"
-  },    
-  "runArgs": [
-        "--name", "claude-code-<your-name>"  //名前の変更
-    ],
-  "remoteUser": "vscode",
+    "dockerfile": "Containerfile",
+    "context": ".",
+    "args": {
+      "VARIANT": "3.12-bullseye",
+      "HTTP_PROXY": "${localEnv:HTTP_PROXY}",
+      "HTTPS_PROXY": "${localEnv:HTTPS_PROXY}",
+      "http_proxy": "${localEnv:http_proxy}",
+      "https_proxy": "${localEnv:https_proxy}",
+      "NO_PROXY": "${localEnv:NO_PROXY}",
+      "no_proxy": "${localEnv:no_proxy}"
+    }
+  },
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+  "workspaceFolder": "/workspace",
   "mounts": [
     "source=${localEnv:HOME}/.aws,target=/home/vscode/.aws,type=bind,readonly"
   ],
+  "containerEnv": {
+    "HTTP_PROXY": "${localEnv:HTTP_PROXY}",
+    "HTTPS_PROXY": "${localEnv:HTTPS_PROXY}",
+    "http_proxy": "${localEnv:http_proxy}",
+    "https_proxy": "${localEnv:https_proxy}",
+    "NO_PROXY": "${localEnv:NO_PROXY}",
+    "no_proxy": "${localEnv:no_proxy}"
+  },
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": true,
   "customizations": {
     "vscode": {
       "settings": {
