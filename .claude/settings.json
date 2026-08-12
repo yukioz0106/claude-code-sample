@@ -3,7 +3,7 @@
   "env": {
     "CLAUDE_CODE_USE_BEDROCK": "1",
     "AWS_REGION": "ap-northeast-1",
-    "AWS_PROFILE": "bedrock",
+    "AWS_PROFILE": "aii1-DJ-app",
     "ANTHROPIC_MODEL": "arn:aws:bedrock:ap-northeast-1:013958956098:inference-profile/global.anthropic.claude-sonnet-5",
     "ANTHROPIC_SMALL_FAST_MODEL": "arn:aws:bedrock:ap-northeast-1:013958956098:inference-profile/jp.anthropic.claude-haiku-4-5-20251001-v1:0"
   }

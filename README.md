@@ -1,69 +1,46 @@
 # Claude Code Sample Repository
 
-Claude Code を AWS Bedrock 経由で利用するための標準リポジトリです。開発環境は rootless Podman と VS Code Dev Containers で起動します。Docker デーモンおよび Docker Compose は使用しません。
+Claude Code を AWS Bedrock 経由で利用するための標準リポジトリです。開発環境は rootless Podman と VS Code Dev Containers で起動します。Docker、Docker Compose、podman-compose は使用しません。
 
 ## 前提
 
 - Linux ホストに rootless Podman が導入済みであること
-- `podman-compose` 1.5 以降が導入済みであること
-- `podman compose version` が `podman-compose` をプロバイダーとして実行すること
 - VS Code に Dev Containers 拡張機能が導入済みであること
 - ホストの `~/.aws/credentials` に Bedrock 用の AWS 認証情報があること
 
-Dev Containers の Podman 互換性は Podman 5 以降が公式の目安です。社内標準環境で別バージョンを使う場合は、本リポジトリの構成検証コマンドが成功することを確認してください。
-
-`podman compose` は外部の Compose プロバイダーを呼び出すラッパーです。Docker Compose を選択させないため、`~/.config/containers/containers.conf` の既存の `[engine]` セクションに次の設定を追加します。セクションがない場合は、設定例のとおり作成してください。
-
-```toml
-[engine]
-compose_providers = ["podman-compose"]
-```
-
-設定後、両方のコマンドが `podman-compose` 1.5 以降を表示することを確認します。
-
-```bash
-podman-compose --version
-podman compose version
-```
-
-ホスト設定を変更せず一時的に試す場合は、`PODMAN_COMPOSE_PROVIDER=podman-compose code .` のように VS Code を起動します。`podman-compose` は Podman CLI を直接実行するため、Podman API ソケットの起動は不要です。
+Dev Containers の Podman 互換性は Podman 5 以降が公式の目安です。社内標準環境で別バージョンを使う場合は、後述の構成確認が成功することを確認してください。ComposeプロバイダーとPodman APIソケットの設定は、この構成では参照されません。
 
 ## 初回設定
 
 ### 1. VS Code から Podman を使う
 
-VS Code のユーザー設定 `settings.json` に以下を追加します。
+`.vscode/settings.json` で、Dev ContainersとContainer Toolsが使用するコマンドを `podman` に設定済みです。
 
-```json
-{
-  "dev.containers.dockerPath": "podman"
-}
-```
-
-設定名には互換 API の都合で `docker` が残っていますが、実行コマンドには `podman` を指定しています。`dev.containers.dockerComposePath` は設定せず、Dev Containers が `dockerPath` を基に呼び出す `podman compose` と、前述の `podman-compose` プロバイダーを使用します。Container Tools 拡張機能向けの Podman 設定は `.vscode/settings.json` に定義済みです。
+`dev.containers.dockerPath` という設定名にはDev Containersの互換API名が残っていますが、値は `podman` です。Compose関連の設定は使用しません。
 
 ### 2. AWS 認証情報を用意する
 
-`.claude/settings.json` の `AWS_PROFILE` はデフォルトで `bedrock` です。ホストの `~/.aws/credentials` に同名のプロファイルを用意します。
+`.claude/settings.json` の `AWS_PROFILE` に設定した名前と同じプロファイルを、ホストの `~/.aws/credentials` に用意します。
 
 ```ini
-[bedrock]
+[your-profile]
 aws_access_key_id=...
 aws_secret_access_key=...
 ```
 
-`~/.aws` はコンテナの `/home/vscode/.aws` に read-only でマウントされます。別のプロファイル名を使う場合は `.claude/settings.json` の `AWS_PROFILE` を変更してください。
+`~/.aws` はコンテナの `/home/vscode/.aws` にread-onlyでマウントされます。
 
 ### 3. 必要に応じて環境変数を設定する
 
-Compose は以下の任意ファイルを読み込みます。どちらも存在しない場合は無視されます。
+`HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY` と、それぞれの小文字名は、VS Codeを起動したホスト環境からビルド時とコンテナ実行時の両方へ引き継がれます。必要な値をホスト側でexportしてからVS Codeを起動してください。
 
-- `.devcontainer/.env`: このリポジトリのコンテナだけで使う値
-- `/cafe05/${USER}/.env`: スパコン環境でユーザーが共通利用する値
+```bash
+export NO_PROXY=bedrock.ap-northeast-1.amazonaws.com,bedrock-runtime.ap-northeast-1.amazonaws.com
+export no_proxy="$NO_PROXY"
+code .
+```
 
-`.devcontainer/.sample.env` をコピーして利用できます。`.env` は Git 管理対象外です。同じ変数が両方にある場合は、後から読み込む `/cafe05/${USER}/.env` の値が優先されます。
-
-ホストの大文字・小文字の proxy 環境変数は、イメージのビルド引数として引き継ぎます。コンテナ実行時にも必要な proxy 環境変数は、上記いずれかの `.env` に記載してください。Compose の `environment` には同名変数を定義していないため、ホスト側で未設定の変数が空文字として `env_file` の値を上書きすることはありません。
+`/cafe05/${USER}/.env` など既存のenvファイルを利用する場合は、信頼できるファイルであることを確認した上で、同様にホストシェルへ読み込んでから `code .` を実行します。
 
 ## 起動
 
@@ -72,53 +49,45 @@ Compose は以下の任意ファイルを読み込みます。どちらも存在
 3. `Dev Containers: Reopen in Container` を実行します。
 4. コンテナ内のターミナルで `claude` を実行します。
 
-ユーザーごとの手動コンテナ名設定は不要です。Compose のプロジェクト名と `localhost/claude-code-sample:dev-${USER}` イメージ名で分離します。
+ユーザーごとの手動コンテナ名設定は不要です。Dev Containersがワークスペース単位のコンテナ名とイメージ名を管理します。
 
 ## 構成の確認
 
-Dev Container を起動する前に、次のコマンドで Compose 設定を検証できます。
+VS Codeと同じDev Containers CLIで起動確認する場合は、次のコマンドを実行します。このコマンドはPodmanを直接呼び出し、Composeは呼び出しません。
 
 ```bash
-podman compose \
-  -f .devcontainer/compose.yaml \
-  -f .devcontainer/compose.dev.yaml \
-  config
+npx --yes @devcontainers/cli up \
+  --workspace-folder . \
+  --docker-path podman \
+  --buildkit never
 ```
 
-起動後は次のコマンドで、Docker ではなく Podman がコンテナを管理していることを確認できます。
+起動後はPodmanがコンテナを管理していることを確認できます。
 
 ```bash
 podman ps
-podman images localhost/claude-code-sample
 ```
 
 ## Podman 運用方針
 
 - `privileged` は使用しません。
-- rootless Podman と `userns_mode: keep-id` を使用します。
-- Compose プロバイダーは `podman-compose` 1.5 以降に固定し、Docker Compose は使用しません。
-- `podman-compose` の既定の Pod 作成は `x-podman.in_pod: false` で無効化し、`userns_mode: keep-id` と両立させます。
-- 外部のベースイメージは `mcr.microsoft.com/...`、生成イメージは `localhost/...` の完全修飾名を使用します。
+- rootless Podmanを使用します。Dev ContainersはPodman利用時に `--userns=keep-id` を自動付与します。
+- Dev ContainersからPodmanのbuild/create/start/execを直接使用し、ComposeとPodman APIソケットは使用しません。
+- ビルド定義はOCI互換の `.devcontainer/Containerfile` です。
+- 外部のベースイメージは `mcr.microsoft.com/...` の完全修飾名を使用します。
 - ワークスペースは `/workspace`、実行ユーザーは `vscode` です。
-- `Dockerfile` と `devcontainer.json` の `dockerComposeFile` は Dev Containers / OCI ツール間で使われる互換上の名称です。コンテナのビルドと実行は Podman が担当します。
+- `dev.containers.dockerPath` と `devcontainer.json` の `build.dockerfile` はDev Containers仕様上の互換名です。実際のコマンドはPodman、実際のファイル名は `Containerfile` です。
 
 ## Claude Code / Bedrock の設定
 
 Claude Code の Bedrock 利用設定は `.claude/settings.json` に定義しています。利用モデルやリージョンを変更する場合は、同ファイルの `ANTHROPIC_MODEL`、`ANTHROPIC_SMALL_FAST_MODEL`、`AWS_REGION` を更新します。
 
-社内 LAN から Direct Connect 経由で Bedrock に接続する場合は、必要に応じて `.devcontainer/.env` または `/cafe05/${USER}/.env` に次のような設定を追加します。
-
-```dotenv
-no_proxy=bedrock.ap-northeast-1.amazonaws.com,bedrock-runtime.ap-northeast-1.amazonaws.com
-NO_PROXY=bedrock.ap-northeast-1.amazonaws.com,bedrock-runtime.ap-northeast-1.amazonaws.com
-```
-
-コンテナ内では `echo "$no_proxy"` と `curl -v https://bedrock-runtime.ap-northeast-1.amazonaws.com` で経路を確認できます。
+社内LANからDirect Connect経由でBedrockに接続する場合は、前述の手順で `NO_PROXY` と `no_proxy` をホスト環境へ設定します。コンテナ内では `echo "$no_proxy"` と `curl -v https://bedrock-runtime.ap-northeast-1.amazonaws.com` で経路を確認できます。
 
 ## 参考リンク
 
 - [VS Code: Alternate ways to install Docker (Podman)](https://code.visualstudio.com/remote/advancedcontainers/docker-options)
-- [Podman: podman compose](https://docs.podman.io/en/latest/markdown/podman-compose.1.html)
-- [Podman Compose](https://github.com/containers/podman-compose)
+- [Dev Container: Using Images and Container Build Files](https://containers.dev/guide/dockerfile)
+- [VS Code: Environment variables](https://code.visualstudio.com/remote/advancedcontainers/environment-variables)
 - [Claude Code 公式ドキュメント](https://code.claude.com/docs/ja/overview)
 - [AWS Bedrock 対応モデル一覧](https://docs.aws.amazon.com/ja_jp/bedrock/latest/userguide/inference-profiles-support.html)
