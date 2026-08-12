@@ -5,7 +5,7 @@ Claude Code を AWS Bedrock 経由で利用するための標準リポジトリ�
 ## 前提
 
 - Linux ホストに rootless Podman が導入済みであること
-- VS Code に Dev Containers 拡張機能が導入済みであること
+- VS Code に最新安定版の Dev Containers 拡張機能（内部の Dev Containers CLI 0.76.0 以降）が導入済みであること
 - ホストの `~/.aws/credentials` に Bedrock 用の AWS 認証情報があること
 
 Dev Containers の Podman 互換性は Podman 5 以降が公式の目安です。社内標準環境で別バージョンを使う場合は、後述の構成確認が成功することを確認してください。ComposeプロバイダーとPodman APIソケットの設定は、この構成では参照されません。
@@ -71,7 +71,8 @@ podman ps
 ## Podman 運用方針
 
 - `privileged` は使用しません。
-- rootless Podmanを使用します。Dev ContainersはPodman利用時に `--userns=keep-id` を自動付与します。
+- rootless Podmanを使用します。Linux版のDev Containers CLIはPodman利用時に `--security-opt label=disable` と、非rootユーザーに対する `--userns=keep-id` を自動付与します。そのため、同じオプションを `runArgs` へ重複して定義しません。
+- `label=disable` により、SELinuxが有効なホストでもワークスペースと `~/.aws` のbind mountを利用できます。一方で、このコンテナに対するSELinuxのラベル分離は無効になるため、信頼できるリポジトリだけを開き、追加の機密ディレクトリを安易にマウントしないでください。AWS認証情報のマウントはread-onlyです。
 - Dev ContainersからPodmanのbuild/create/start/execを直接使用し、ComposeとPodman APIソケットは使用しません。
 - ビルド定義はOCI互換の `.devcontainer/Containerfile` です。
 - 外部のベースイメージは `mcr.microsoft.com/...` の完全修飾名を使用します。
@@ -87,6 +88,8 @@ Claude Code の Bedrock 利用設定は `.claude/settings.json` に定義して�
 ## 参考リンク
 
 - [VS Code: Alternate ways to install Docker (Podman)](https://code.visualstudio.com/remote/advancedcontainers/docker-options)
+- [Dev Containers CLI: Change Log](https://github.com/devcontainers/cli/blob/main/CHANGELOG.md)
+- [Podman: Volume mount permission denied (SELinux)](https://github.com/containers/podman/blob/main/troubleshooting.md#2-cant-use-volume-mount-get-permission-denied)
 - [Dev Container: Using Images and Container Build Files](https://containers.dev/guide/dockerfile)
 - [VS Code: Environment variables](https://code.visualstudio.com/remote/advancedcontainers/environment-variables)
 - [Claude Code 公式ドキュメント](https://code.claude.com/docs/ja/overview)
