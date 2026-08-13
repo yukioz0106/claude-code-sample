@@ -33,6 +33,12 @@ RUN set -eux; \
     ./aws/install && \
     rm -rf awscliv2.zip aws
 
+# AWS only supports SigV4 credentials in ~/.aws/credentials. This launcher
+# bridges the repository-specific AWS_BEARER_TOKEN_BEDROCK profile entry to
+# the environment variable supported by Claude Code and Amazon Bedrock.
+COPY claude_bedrock_profile.py /usr/local/lib/claude-bedrock-profile/claude
+RUN chmod 0755 /usr/local/lib/claude-bedrock-profile/claude
+
 # Install Claude Code using native installer
 # Security mitigations:
 #   - Script is downloaded separately and inspected before execution
@@ -49,8 +55,8 @@ RUN set -eux; \
     # bash /tmp/claude-install.sh {version} && \
     rm -f /tmp/claude-install.sh
 
-# Ensure Claude Code binary is on PATH
-ENV PATH="/home/vscode/.local/bin:${PATH}"
+# Put the profile-aware launcher before the native Claude Code binary.
+ENV PATH="/usr/local/lib/claude-bedrock-profile:/home/vscode/.local/bin:${PATH}"
 
 # Set working directory
 WORKDIR /workspace
