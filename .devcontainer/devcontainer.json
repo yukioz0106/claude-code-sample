@@ -31,9 +31,6 @@
     "NO_PROXY": "${localEnv:NO_PROXY}",
     "no_proxy": "${localEnv:no_proxy}"
   },
-  "remoteEnv": {
-    "PATH": "/usr/local/lib/claude-bedrock-profile:${containerEnv:PATH}"
-  },
   "remoteUser": "vscode",
   "updateRemoteUserUID": true,
   "customizations": {
