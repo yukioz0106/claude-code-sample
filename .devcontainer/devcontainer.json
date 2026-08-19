@@ -31,11 +31,6 @@
     "NO_PROXY": "${localEnv:NO_PROXY}",
     "no_proxy": "${localEnv:no_proxy}"
   },
-  "postCreateCommand": [
-    "/bin/sh",
-    "/workspace/.devcontainer/initialize-claude-auth.sh",
-    "/workspace"
-  ],
   "remoteUser": "vscode",
   "updateRemoteUserUID": true,
   "customizations": {

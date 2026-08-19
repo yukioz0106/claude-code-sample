@@ -12,37 +12,33 @@ Claude Code を AWS Bedrock 経由で利用するための標準リポジトリ�
 
 Dev Containers の Podman 互換性は Podman 5 以降が公式の目安です。社内標準環境で別バージョンを使う場合は、後述の構成確認が成功することを確認してください。ComposeプロバイダーとPodman APIソケットの設定は、この構成では参照されません。
 
-## 初回設定
+## 利用手順
 
-### 1. VS Code から Podman を使う
+### 1. Dev Containerを起動する
 
-`.vscode/settings.json` で、Dev ContainersとContainer Toolsが使用するコマンドを `podman` に設定済みです。
+1. このリポジトリをクローンします。
+2. VS Codeでリポジトリを開きます。
+3. `Dev Containers: Reopen in Container` を実行します。
 
-`dev.containers.dockerPath` という設定名にはDev Containersの互換API名が残っていますが、値は `podman` です。Compose関連の設定は使用しません。
+クローン直後は既存コンテナがないため、`Reopen in Container`でイメージのビルドとコンテナの作成まで実行されます。
 
-### 2. Bedrock の認証方式を選ぶ
+以前のリポジトリ構成ですでにDev Containerを作成済みの場合や、`.devcontainer/Containerfile`または`.devcontainer/devcontainer.json`の更新を取得した場合は、古いイメージやコンテナ設定を使わないよう、`Dev Containers: Rebuild and Reopen in Container`を実行してください。
 
-認証方式は `.claude/settings.local.json` の内容だけで切り替えます。ホストでの `export` / `unset` や、認証方式を変えるたびのコンテナ再ビルドは不要です。
+### 2. Bedrockの認証方式を選ぶ
 
-このファイルは Dev Container の初回作成時に `.claude/settings.local.json.template` から自動生成され、Git管理対象から除外されます。自動生成時には、他ユーザーから読み取られないようファイル権限を `600` に設定します。
+#### A. IAMアクセスキーを使う
 
-> [!IMPORTANT]
-> 認証情報を記入するのは、Git管理外の `.claude/settings.local.json` だけです。`.claude/settings.json` や `.claude/settings.local.json.template` にはAPIキーを書かないでください。
-
-#### A. IAMアクセスキーを使う（従来方式）
-
-`.claude/settings.local.json` を次の内容にします。`bedrock` は `.aws/credentials` で使用しているプロファイル名に合わせて変更できます。
+IAMアクセスキー方式では、`.claude/settings.local.json`を作成しません。Git管理対象の`.claude/settings.json`には、共有の標準プロファイル名として`AWS_PROFILE: bedrock`が設定済みです。この値をユーザーごとに変更せず、ホストの`~/.aws/credentials`に`bedrock`プロファイルを用意します。
 
 ```json
 {
-  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "env": {
     "AWS_PROFILE": "bedrock"
   }
 }
 ```
 
-ホストの `~/.aws/credentials` に同名のプロファイルを用意します。
+ホストの`~/.aws/credentials`に同名のプロファイルを用意します。
 
 ```ini
 [bedrock]
@@ -50,11 +46,18 @@ aws_access_key_id=...
 aws_secret_access_key=...
 ```
 
-`~/.aws` はコンテナの `/home/vscode/.aws` にread-onlyでマウントされます。ホストに `~/.aws` がない場合は、Dev Containers がマウント前に空のディレクトリを自動作成します。
+以前にAPIキー方式を使用し、`.claude/settings.local.json`が残っている場合は削除してください。ローカル設定は共有設定より優先されるため、APIキーが残っているとIAMアクセスキー方式へ切り替わりません。
 
 #### B. Bedrock APIキーを使う（long-term）
 
-`.claude/settings.local.json` 全体を次の内容へ置き換え、プレースホルダーを実際のキーに変更します。
+クローン直後には`.claude/settings.local.json`は存在しません。次のコマンドでAPIキー専用テンプレートを`.claude/settings.local.json`へコピーし、所有者だけが読み書きできる権限に変更します。Git管理対象のテンプレートは、認証方式を再度切り替えるときに再利用できるよう残します。
+
+```bash
+cp .claude/settings.local.json.template .claude/settings.local.json
+chmod 600 .claude/settings.local.json
+```
+
+Git管理外の`.claude/settings.local.json`を開き、プレースホルダーを実際のAPIキーに変更します。
 
 ```json
 {
@@ -65,44 +68,75 @@ aws_secret_access_key=...
 }
 ```
 
-APIキーに関連付けられた IAM ユーザーには、このリポジトリで指定している推論プロファイルに対する次の権限が必要です。
+> [!IMPORTANT]
+> APIキーを記入するのは、Git管理外の`.claude/settings.local.json`だけです。Git管理対象の`.claude/settings.json`には記入しないでください。
+
+APIキーに関連付けられたIAMユーザーには、APIキーの使用を許可する`bedrock:CallWithBearerToken`が必要です。long-term API keyだけに限定する場合は、次のポリシー文をIAMユーザーへ追加します。
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowBedrockLongTermApiKey",
+      "Effect": "Allow",
+      "Action": "bedrock:CallWithBearerToken",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "bedrock:bearerTokenType": "LONG_TERM"
+        }
+      }
+    }
+  ]
+}
+```
+
+これとは別に、このリポジトリで指定している推論プロファイルへの次の権限も必要です。
 
 - `bedrock:InvokeModel`
 - `bedrock:InvokeModelWithResponseStream`
 - `bedrock:ListInferenceProfiles`
 - `bedrock:GetInferenceProfile`
 
-ファイルを保存した後に Claude Code を新しく起動すると、APIキー認証が選択されます。IAM方式へ戻す場合は、同じファイルを A の内容へ戻すだけです。共有設定に `AWS_PROFILE` が残っていても、`AWS_BEARER_TOKEN_BEDROCK` がある場合はAPIキー認証がAWSクレデンシャルチェーンとは別に処理されます。
+`bedrock:CallWithBearerToken`の403が表示された場合は、コンテナやAPIキーの読込みではなく、APIキーに関連付けられたIAMユーザーの権限不足です。エラーに`Please run /login`と表示されても、Bedrock認証は`/login`では解決しません。上記ポリシーを確認してください。OrganizationsのSCP、permissions boundary、または明示的なDenyがある場合は、Allowを追加しても拒否されるため、管理者による確認が必要です。
 
-> [!NOTE]
-> AWS は long-term API key を検証・探索用途向けと位置づけ、本番用途には short-term API key を推奨しています。本構成は依頼どおり long-term API key に対応しますが、キーには有効期限と必要最小限の権限を設定してください。
+### 3. Claude Codeを起動する
 
-### 3. 必要に応じて環境変数を設定する
-
-`HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY` と、それぞれの小文字名は、VS Codeを起動したホスト環境からビルド時とコンテナ実行時の両方へ引き継がれます。必要な値をホスト側でexportしてからVS Codeを起動してください。
+コンテナ内のターミナルで次のコマンドを実行します。
 
 ```bash
-export NO_PROXY=bedrock.ap-northeast-1.amazonaws.com,bedrock-runtime.ap-northeast-1.amazonaws.com
-export no_proxy="$NO_PROXY"
-code .
+claude
 ```
 
-`/cafe05/${USER}/.env` など既存のenvファイルを利用する場合は、信頼できるファイルであることを確認した上で、同様にホストシェルへ読み込んでから `code .` を実行します。
+Claude Codeの`/status`で、プロバイダーがAmazon Bedrockであることと、意図した設定ソースが読み込まれていることを確認します。最終的な疎通は、実際にプロンプトを送信して確認してください。
 
-## 起動
+`.claude/settings.json`または`.claude/settings.local.json`だけを変更した場合は、実行中のClaude Codeを終了して新しく起動すれば反映されます。Dev Containerの再作成は不要です。
 
-1. このリポジトリをクローンします。
-2. VS Code でリポジトリを開きます。
-3. `Dev Containers: Reopen in Container` を実行します。
-4. コンテナ内のターミナルで `claude` を実行します。
+## 補足
 
-ユーザーごとの手動コンテナ名設定は不要です。Dev Containersがワークスペース単位のコンテナ名とイメージ名を管理します。
+### Podman / Dev Containers
 
-認証方式を変更した場合は、実行中の Claude Code を終了して新しく起動します。Dev Container 自体の再作成や、ホスト環境変数の変更は不要です。
+`.vscode/settings.json`で、Dev ContainersとContainer Toolsが使用するコマンドを`podman`に設定済みです。利用者による設定変更は不要です。
 
-### 認証設定を確認する
+`dev.containers.dockerPath`という設定名にはDev Containersの互換API名が残っていますが、値は`podman`です。Compose関連の設定は使用しません。
 
-Claude Code の `/status` で、プロバイダーが Amazon Bedrock であることと、ローカルプロジェクト設定が読み込まれていることを確認できます。APIキーは Bedrock 専用なので、APIキー方式の確認に `aws sts get-caller-identity` は使用できません。最終的な疎通は実際のモデル呼び出しで確認してください。
+ユーザーごとの手動コンテナ名設定も不要です。Dev Containersがワークスペース単位のコンテナ名とイメージ名を管理します。
+
+### 認証設定の仕組み
+
+IAMアクセスキー方式の`AWS_PROFILE`は、共有プロジェクト設定`.claude/settings.json`で標準値`bedrock`を指定します。各ユーザーはホストの`~/.aws/credentials`に同名のプロファイルを用意し、ユーザー固有のプロファイル名をGit管理対象の設定へ書き込みません。同じ値を`.claude/settings.local.json`へ重複して指定する必要もありません。
+
+`.claude/settings.local.json`はAPIキー方式でのみ使用します。このローカル設定は共有設定より優先され、`AWS_BEARER_TOKEN_BEDROCK`をClaude Codeのプロセスへ設定します。認証設定を変更するためのホストでの`export` / `unset`は不要です。
+
+IAMアクセスキー方式で使用するホストの`~/.aws`は、コンテナの`/home/vscode/.aws`にread-onlyでマウントされます。ホストに`~/.aws`がない場合は、Dev Containersがマウント前に空のディレクトリを自動作成します。
+
+旧構成でホストの`~/.aws/credentials`に`AWS_BEARER_TOKEN_BEDROCK = ...`を記載していた場合、その行は削除またはコメントアウトしてください。現在の構成は同ファイルからAPIキーを読み取りません。
+
+APIキーはBedrock専用なので、APIキー方式の確認に`aws sts get-caller-identity`は使用できません。
+
+> [!NOTE]
+> AWSはlong-term API keyを検証・探索用途向けと位置づけ、本番用途にはshort-term API keyを推奨しています。本構成はlong-term API keyに対応しますが、キーには有効期限と必要最小限の権限を設定してください。
 
 ## 構成の確認
 
@@ -138,14 +172,13 @@ Claude Code の Bedrock 利用設定は `.claude/settings.json` に定義して�
 
 認証に関する役割分担は次のとおりです。
 
-- `.claude/settings.json`: Bedrock有効化、リージョン、モデル、共有のIAMプロファイル初期値
-- `.claude/settings.local.json.template`: IAM方式の安全な初期テンプレート（Git管理対象）
-- `.claude/settings.local.json`: ユーザーがIAM/APIキー方式を選ぶローカル設定（Git管理外）
-- `.devcontainer/devcontainer.json`: `~/.aws` とローカル設定ファイルの初期準備を自動化
+- `.claude/settings.json`: Bedrock有効化、リージョン、モデル、IAMアクセスキー方式のAWSプロファイル
+- `.claude/settings.local.json.template`: APIキー方式専用のローカル設定テンプレート（Git管理対象）
+- `.claude/settings.local.json`: テンプレートをコピーして使用するAPIキー設定（Git管理外）
+- `.devcontainer/devcontainer.json`: `~/.aws`のread-onlyマウントと、マウント元ディレクトリの初期準備
 
 APIキーはローカル設定ファイルから Claude Code のセッションだけに設定されます。ホスト環境からの `AWS_BEARER_TOKEN_BEDROCK` 転送は行いません。
 
-社内LANからDirect Connect経由でBedrockに接続する場合は、前述の手順で `NO_PROXY` と `no_proxy` をホスト環境へ設定します。コンテナ内では `echo "$no_proxy"` と `curl -v https://bedrock-runtime.ap-northeast-1.amazonaws.com` で経路を確認できます。
 
 ## 参考リンク
 
@@ -153,10 +186,12 @@ APIキーはローカル設定ファイルから Claude Code のセッション�
 - [Dev Containers CLI: Change Log](https://github.com/devcontainers/cli/blob/main/CHANGELOG.md)
 - [Podman: Volume mount permission denied (SELinux)](https://github.com/containers/podman/blob/main/troubleshooting.md#2-cant-use-volume-mount-get-permission-denied)
 - [Dev Container: Using Images and Container Build Files](https://containers.dev/guide/dockerfile)
-- [VS Code: Environment variables](https://code.visualstudio.com/remote/advancedcontainers/environment-variables)
+- [VS Code: Create a Dev Container（再ビルド）](https://code.visualstudio.com/docs/devcontainers/create-dev-container)
 - [Claude Code 公式ドキュメント](https://code.claude.com/docs/ja/overview)
 - [Claude Code settings](https://code.claude.com/docs/en/configuration)
 - [Claude Code on Amazon Bedrock](https://code.claude.com/docs/en/amazon-bedrock)
 - [Amazon Bedrock: API keys](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys.html)
 - [Amazon Bedrock: Use an API key](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-use.html)
+- [Amazon Bedrock: APIキーの生成・利用権限](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-permissions.html)
+- [Amazon Bedrock: APIキーの権限変更例](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-modify.html)
 - [AWS Bedrock 対応モデル一覧](https://docs.aws.amazon.com/ja_jp/bedrock/latest/userguide/inference-profiles-support.html)
