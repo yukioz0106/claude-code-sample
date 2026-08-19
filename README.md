@@ -28,7 +28,7 @@ Dev Containers の Podman 互換性は Podman 5 以降が公式の目安です�
 
 #### A. IAMアクセスキーを使う
 
-IAMアクセスキー方式では、`.claude/settings.local.json`を作成しません。Git管理対象の`.claude/settings.json`にある`AWS_PROFILE`を、ホストの`~/.aws/credentials`で使用するプロファイル名に変更します。両方で同じ`bedrock`を使用する場合、変更は不要です。
+IAMアクセスキー方式では、`.claude/settings.local.json`を作成しません。Git管理対象の`.claude/settings.json`には、共有の標準プロファイル名として`AWS_PROFILE: bedrock`が設定済みです。この値をユーザーごとに変更せず、ホストの`~/.aws/credentials`に`bedrock`プロファイルを用意します。
 
 ```json
 {
@@ -50,10 +50,10 @@ aws_secret_access_key=...
 
 #### B. Bedrock APIキーを使う（long-term）
 
-クローン直後には`.claude/settings.local.json`は存在しません。次のコマンドでAPIキー専用テンプレートを`.claude/settings.local.json`へリネームし、所有者だけが読み書きできる権限に変更します。
+クローン直後には`.claude/settings.local.json`は存在しません。次のコマンドでAPIキー専用テンプレートを`.claude/settings.local.json`へコピーし、所有者だけが読み書きできる権限に変更します。Git管理対象のテンプレートは、認証方式を再度切り替えるときに再利用できるよう残します。
 
 ```bash
-mv .claude/settings.local.json.template .claude/settings.local.json
+cp .claude/settings.local.json.template .claude/settings.local.json
 chmod 600 .claude/settings.local.json
 ```
 
@@ -125,7 +125,7 @@ Claude Codeの`/status`で、プロバイダーがAmazon Bedrockであること�
 
 ### 認証設定の仕組み
 
-IAMアクセスキー方式の`AWS_PROFILE`は、共有プロジェクト設定`.claude/settings.json`だけで指定します。Claude Codeは設定ファイルの`env`から`AWS_PROFILE`を利用できるため、同じ値を`.claude/settings.local.json`へ重複して指定する必要はありません。
+IAMアクセスキー方式の`AWS_PROFILE`は、共有プロジェクト設定`.claude/settings.json`で標準値`bedrock`を指定します。各ユーザーはホストの`~/.aws/credentials`に同名のプロファイルを用意し、ユーザー固有のプロファイル名をGit管理対象の設定へ書き込みません。同じ値を`.claude/settings.local.json`へ重複して指定する必要もありません。
 
 `.claude/settings.local.json`はAPIキー方式でのみ使用します。このローカル設定は共有設定より優先され、`AWS_BEARER_TOKEN_BEDROCK`をClaude Codeのプロセスへ設定します。認証設定を変更するためのホストでの`export` / `unset`は不要です。
 
@@ -174,7 +174,7 @@ Claude Code の Bedrock 利用設定は `.claude/settings.json` に定義して�
 
 - `.claude/settings.json`: Bedrock有効化、リージョン、モデル、IAMアクセスキー方式のAWSプロファイル
 - `.claude/settings.local.json.template`: APIキー方式専用のローカル設定テンプレート（Git管理対象）
-- `.claude/settings.local.json`: テンプレートをリネームして使用するAPIキー設定（Git管理外）
+- `.claude/settings.local.json`: テンプレートをコピーして使用するAPIキー設定（Git管理外）
 - `.devcontainer/devcontainer.json`: `~/.aws`のread-onlyマウントと、マウント元ディレクトリの初期準備
 
 APIキーはローカル設定ファイルから Claude Code のセッションだけに設定されます。ホスト環境からの `AWS_BEARER_TOKEN_BEDROCK` 転送は行いません。
