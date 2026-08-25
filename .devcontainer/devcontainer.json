@@ -13,15 +13,10 @@
       "no_proxy": "${localEnv:no_proxy}"
     }
   },
-  "initializeCommand": [
-    "mkdir",
-    "-p",
-    "${localEnv:HOME}/.aws"
-  ],
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
   "workspaceFolder": "/workspace",
   "mounts": [
-    "source=${localEnv:HOME}/.aws,target=/home/vscode/.aws,type=bind,readonly"
+    "source=${devcontainerId}-aws-login,target=/home/vscode/.aws,type=volume"
   ],
   "containerEnv": {
     "HTTP_PROXY": "${localEnv:HTTP_PROXY}",
@@ -32,6 +27,7 @@
     "no_proxy": "${localEnv:no_proxy}"
   },
   "remoteUser": "vscode",
+  "postCreateCommand": "sudo chown -R vscode:vscode /home/vscode/.aws && chmod 700 /home/vscode/.aws",
   "updateRemoteUserUID": true,
   "customizations": {
     "vscode": {
