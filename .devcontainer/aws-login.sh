@@ -106,7 +106,12 @@ printf 'Verified AWS identity: account=%s arn=%s userId=%s\n' \
 # operational profile from this Dev Container's isolated AWS storage, then
 # expose the login profile through credential_process for Claude Code and SDKs.
 remove_ini_section "${AWS_CREDENTIALS_FILE_PATH}" "${OPS_PROFILE}"
-remove_ini_section "${AWS_CONFIG_FILE_PATH}" "profile ${OPS_PROFILE}"
+# AWS config uses [default] for the default profile and [profile name] for named profiles.
+if [[ "${OPS_PROFILE}" == "default" ]]; then
+    remove_ini_section "${AWS_CONFIG_FILE_PATH}" "default"
+else
+    remove_ini_section "${AWS_CONFIG_FILE_PATH}" "profile ${OPS_PROFILE}"
+fi
 
 aws configure set region "${AWS_REGION}" --profile "${LOGIN_PROFILE}"
 aws configure set region "${AWS_REGION}" --profile "${OPS_PROFILE}"
