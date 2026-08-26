@@ -120,7 +120,7 @@ Claude Codeの`/status`で、プロバイダーがAmazon Bedrockであること�
 - `ANTHROPIC_MODEL`: Claude Codeが通常の処理に使用するメインモデルです。
 - `ANTHROPIC_DEFAULT_HAIKU_MODEL`: セッションタイトル生成などの軽量なバックグラウンド処理に使用するモデルです。旧設定名の`ANTHROPIC_SMALL_FAST_MODEL`は非推奨です。
 
-値には、Bedrockの基盤モデルID、クロスリージョン推論プロファイルID、または推論プロファイルARNを指定します。このリポジトリでは推論プロファイルARNを使用しています。選択したモデルまたは推論プロファイルが`AWS_REGION`から呼び出せること、使用するAWSアカウントでアクセスできること、IAMポリシーで呼び出しが許可されていることを確認してください。
+値には、Bedrockの基盤モデルID、クロスリージョン推論プロファイルID、または推論プロファイルARNを指定します。このリポジトリの共有設定では、AWSアカウントIDを含まないシステム定義の推論プロファイルIDを使用しています。選択したモデルまたは推論プロファイルが`AWS_REGION`から呼び出せること、使用するAWSアカウントでアクセスできること、IAMポリシーで呼び出しが許可されていることを確認してください。
 
 現在利用できるモデルと正確なIDは、AWS公式ドキュメントの[Model availability & compatibility](https://docs.aws.amazon.com/bedrock/latest/userguide/models.html)から対象モデルの詳細ページを開いて確認します。モデルIDの種類ごとの確認先は[Using models with Bedrock](https://docs.aws.amazon.com/bedrock/latest/userguide/foundation-models-reference.html)、クロスリージョン推論プロファイルIDと利用可能なソース／宛先リージョンは[Supported Regions and models for inference profiles](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html)を参照してください。Claude Code側の指定方法は[Claude Code on Amazon Bedrock](https://code.claude.com/docs/en/amazon-bedrock)で確認できます。
 
@@ -165,7 +165,22 @@ AWS_REGION=ap-northeast-1 \
 ./.devcontainer/aws-login.sh
 ```
 
-別のAWSアカウントを使用する場合は、誤ログイン検知が正しく働くよう、12桁のアカウントIDを`EXPECTED_AWS_ACCOUNT_ID`へ指定します。
+別のAWSアカウントを使用する場合は、`.claude/settings.json`の`ANTHROPIC_MODEL`と`ANTHROPIC_DEFAULT_HAIKU_MODEL`が、そのアカウントと`AWS_REGION`で利用できることを確認します。利用できない場合は、両方を利用可能なモデルID、推論プロファイルID、または選択したアカウントのARNへ変更してください。ARNを使用する場合は、元のアカウントIDが残っていないことも確認します。
+
+利用者単位でAWSアカウントを切り替える場合は、共有の`.claude/settings.json`を変更せず、Git管理外の`.claude/settings.local.json`でプロファイル名と両方のモデルを上書きできます。
+
+```json
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "env": {
+    "AWS_PROFILE": "my-bedrock",
+    "ANTHROPIC_MODEL": "MODEL_OR_INFERENCE_PROFILE_FOR_SELECTED_ACCOUNT",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "HAIKU_MODEL_OR_INFERENCE_PROFILE_FOR_SELECTED_ACCOUNT"
+  }
+}
+```
+
+続いて、誤ログイン検知が正しく働くよう、選択したAWSアカウントの12桁のアカウントIDを`EXPECTED_AWS_ACCOUNT_ID`へ指定します。
 
 ```bash
 OPS_PROFILE=my-bedrock \
