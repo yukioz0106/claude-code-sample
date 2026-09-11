@@ -1,5 +1,4 @@
-ARG VARIANT="3.12-bullseye"
-FROM mcr.microsoft.com/vscode/devcontainers/python:${VARIANT}
+FROM mcr.microsoft.com/devcontainers/python:3.12-bookworm
 
 # Forward proxy settings only while building. They are deliberately not
 # persisted with ENV so that host-specific values do not remain in the image.
@@ -10,47 +9,29 @@ ARG https_proxy
 ARG NO_PROXY
 ARG no_proxy
 
-# Remove invalid Yarn repo (GPG key expired in base image)
-RUN rm -f /etc/apt/sources.list.d/yarn.list
+USER root
 
-# Install basic packages and AWS CLI dependencies
-RUN apt-get update && apt-get install -y \
-    curl="7.74.0-1.3+deb11u16" \
-    vim="2:8.2.2434-3+deb11u3" \
-    git="1:2.30.2-1+deb11u5" \
-    make="4.3-4.1" \
-    unzip="6.0-26+deb11u1" \
-    groff="1.22.4-6" \
-    less="551-2+deb11u2" \
-    iputils-ping="3:20210202-1" \
-    ca-certificates="20250419~deb12u1~deb11u1" \
-    && rm -rf /var/lib/apt/lists/*
+# initializeCommand rewrites this file immediately before every Dev Container
+# build. COPY therefore invalidates the dependency layer even when the
+# Containerfile itself has not changed.
+COPY .build-resolution-time /tmp/devcontainer-build-resolution-time
+COPY resolve_releases.py install-reviewed-tools.sh aws-cli-public-key.asc \
+    /usr/local/lib/devcontainer/
 
-# Install AWS CLI v2
-RUN set -eux; \
-    curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && \
-    unzip awscliv2.zip && \
-    ./aws/install && \
-    rm -rf awscliv2.zip aws
+# Resolve and install packages using the single build-start timestamp above.
+# The script fails closed if release metadata or a signature cannot be verified.
+RUN chmod 0755 \
+        /usr/local/lib/devcontainer/resolve_releases.py \
+        /usr/local/lib/devcontainer/install-reviewed-tools.sh \
+    && /usr/local/lib/devcontainer/install-reviewed-tools.sh \
+        /tmp/devcontainer-build-resolution-time \
+    && rm -f /tmp/devcontainer-build-resolution-time
 
-# Install Claude Code using native installer
-# Security mitigations:
-#   - Script is downloaded separately and inspected before execution
-#   - TLS certificate verification is enforced (default with curl)
-#   - Execution is scoped to this build step only
-USER vscode
-RUN set -eux; \
-    curl -fsSL --proto '=https' --tlsv1.2 \
-        https://claude.ai/install.sh -o /tmp/claude-install.sh && \
-    # Fail if script is empty or suspiciously small (< 1KB)
-    [ "$(wc -c < /tmp/claude-install.sh)" -gt 1024 ] && \
-    bash /tmp/claude-install.sh stable && \
-    # for specific version:
-    # bash /tmp/claude-install.sh {version} && \
-    rm -f /tmp/claude-install.sh
-
-# Ensure Claude Code binary is on PATH
+# Claude Code is updated only by rebuilding, after the selected release has
+# completed the 14-day waiting period.
 ENV PATH="/home/vscode/.local/bin:${PATH}"
+ENV DISABLE_AUTOUPDATER=1
+ENV DISABLE_UPDATES=1
 
-# Set working directory
+USER vscode
 WORKDIR /workspace
