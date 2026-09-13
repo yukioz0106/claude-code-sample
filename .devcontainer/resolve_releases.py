@@ -18,8 +18,8 @@ from typing import Any, Callable, Iterable, Mapping
 
 GITHUB_API_VERSION = "2022-11-28"
 GITHUB_RELEASES_URL = "https://api.github.com/repos/{repository}/releases"
-GITHUB_TAGS_URL = "https://api.github.com/repos/{repository}/tags"
-MAX_PAGES = 10
+AWS_CHANGELOG_URL = "https://raw.githubusercontent.com/aws/aws-cli/v2/CHANGELOG.rst"
+MAX_PAGES = 50
 PAGE_SIZE = 100
 SEMVER_PATTERN = re.compile(r"^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 
@@ -93,6 +93,24 @@ def request_json(url: str, *, attempts: int = 4) -> Any:
     raise AssertionError("retry loop ended unexpectedly")
 
 
+def request_text(url: str, *, attempts: int = 4) -> str:
+    for attempt in range(attempts):
+        request = urllib.request.Request(
+            url,
+            headers={"User-Agent": github_headers()["User-Agent"]},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                return response.read().decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise ResolutionError(f"Release metadata from {url} is not valid UTF-8") from error
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as error:
+            if not retryable(error) or attempt == attempts - 1:
+                raise ResolutionError(f"Failed to retrieve release metadata from {url}: {error}") from error
+            time.sleep(2**attempt)
+    raise AssertionError("retry loop ended unexpectedly")
+
+
 def request_headers(url: str, *, attempts: int = 4) -> Mapping[str, str]:
     for attempt in range(attempts):
         request = urllib.request.Request(
@@ -158,6 +176,7 @@ def resolve_repository(
     fetch_json: Callable[[str], Any] = request_json,
 ) -> dict[str, Any]:
     releases: list[dict[str, Any]] = []
+    pagination_complete = False
     for page in range(1, MAX_PAGES + 1):
         url = f"{GITHUB_RELEASES_URL.format(repository=repository)}?per_page={PAGE_SIZE}&page={page}"
         response = fetch_json(url)
@@ -165,11 +184,19 @@ def resolve_repository(
             raise ResolutionError(f"Unexpected GitHub release response for {repository}")
         releases.extend(response)
 
-        selected = select_release(releases, cutoff, required_major=required_major)
-        if selected is not None:
-            return selected
         if len(response) < PAGE_SIZE:
+            pagination_complete = True
             break
+
+    if not pagination_complete:
+        raise ResolutionError(
+            f"Cannot determine the newest release for {repository}: GitHub pagination "
+            f"exceeded the {MAX_PAGES}-page safety limit"
+        )
+
+    selected = select_release(releases, cutoff, required_major=required_major)
+    if selected is not None:
+        return selected
 
     raise ResolutionError(
         f"No stable semantic-version release for {repository} was published on or before "
@@ -177,62 +204,61 @@ def resolve_repository(
     )
 
 
+def parse_aws_cli_versions(changelog: str) -> list[tuple[tuple[int, int, int], str]]:
+    """Extract complete AWS CLI v2 release headings from the official changelog."""
+    candidates: dict[tuple[int, int, int], str] = {}
+    lines = changelog.splitlines()
+    for index, line in enumerate(lines[:-1]):
+        version_text = line.strip()
+        version = parse_semver(version_text)
+        underline = lines[index + 1].strip()
+        if (
+            version is not None
+            and version[0] == 2
+            and len(underline) >= len(version_text)
+            and set(underline) == {"="}
+        ):
+            candidates[version] = version_text
+    return sorted(candidates.items(), reverse=True)
+
+
 def resolve_aws_cli(
     cutoff: datetime,
     architecture: str,
     *,
-    fetch_json: Callable[[str], Any] = request_json,
+    fetch_text: Callable[[str], str] = request_text,
     fetch_headers: Callable[[str], Mapping[str, str]] = request_headers,
 ) -> dict[str, str]:
-    """Resolve AWS CLI using official tags and the actual installer upload time."""
+    """Resolve AWS CLI using its complete changelog and installer upload time."""
     aws_architecture = {"amd64": "x86_64", "arm64": "aarch64"}.get(architecture)
     if aws_architecture is None:
         raise ResolutionError(f"Unsupported architecture: {architecture}")
 
-    inspected_versions: set[str] = set()
-    for page in range(1, MAX_PAGES + 1):
-        tags_url = (
-            f"{GITHUB_TAGS_URL.format(repository='aws/aws-cli')}"
-            f"?per_page={PAGE_SIZE}&page={page}"
+    candidates = parse_aws_cli_versions(fetch_text(AWS_CHANGELOG_URL))
+    if not candidates:
+        raise ResolutionError("No AWS CLI v2 releases found in the official changelog")
+
+    for _, version_text in candidates:
+        tag_name = version_text
+        installer_url = (
+            "https://awscli.amazonaws.com/"
+            f"awscli-exe-linux-{aws_architecture}-{version_text}.zip"
         )
-        response = fetch_json(tags_url)
-        if not isinstance(response, list) or not all(isinstance(item, dict) for item in response):
-            raise ResolutionError("Unexpected GitHub tags response for aws/aws-cli")
-
-        candidates: list[tuple[tuple[int, int, int], str]] = []
-        for item in response:
-            tag_name = item.get("name")
-            if not isinstance(tag_name, str):
-                continue
-            version = parse_semver(tag_name)
-            if version is not None and version[0] == 2 and tag_name not in inspected_versions:
-                candidates.append((version, tag_name))
-
-        for _, tag_name in sorted(candidates, reverse=True):
-            inspected_versions.add(tag_name)
-            version_text = tag_name[1:] if tag_name.startswith("v") else tag_name
-            installer_url = (
-                "https://awscli.amazonaws.com/"
-                f"awscli-exe-linux-{aws_architecture}-{version_text}.zip"
-            )
-            headers = fetch_headers(installer_url)
-            last_modified_text = headers.get("Last-Modified")
-            if not last_modified_text:
-                continue
-            last_modified = parse_http_timestamp(last_modified_text)
-            if last_modified <= cutoff:
-                return {
-                    "repository": "aws/aws-cli",
-                    "version": version_text,
-                    "tag_name": tag_name,
-                    "installer_last_modified": format_utc_timestamp(last_modified),
-                    "release_url": f"https://github.com/aws/aws-cli/tree/{tag_name}",
-                    "download_url": installer_url,
-                    "signature_url": f"{installer_url}.sig",
-                }
-
-        if len(response) < PAGE_SIZE:
-            break
+        headers = fetch_headers(installer_url)
+        last_modified_text = headers.get("Last-Modified")
+        if not last_modified_text:
+            continue
+        last_modified = parse_http_timestamp(last_modified_text)
+        if last_modified <= cutoff:
+            return {
+                "repository": "aws/aws-cli",
+                "version": version_text,
+                "tag_name": tag_name,
+                "installer_last_modified": format_utc_timestamp(last_modified),
+                "release_url": f"https://github.com/aws/aws-cli/tree/{tag_name}",
+                "download_url": installer_url,
+                "signature_url": f"{installer_url}.sig",
+            }
 
     raise ResolutionError(
         "No AWS CLI v2 installer was uploaded on or before "

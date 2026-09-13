@@ -312,8 +312,8 @@ Dev Container内へ明示的に導入するAPTパッケージ、AWS CLI、Claude
 対象ごとの判定方法は次のとおりです。
 
 - Debian APT: カットオフ時刻を指定したDebian SnapshotのBookworm／Bookworm Securityを使用します。指定時刻ちょうどのSnapshotがない場合、Debian Snapshotの仕様によりそれ以前で最も新しいSnapshotが使用されます。パッケージ名だけを指定し、Snapshot内の候補版をインストールします。
-- AWS CLI v2: AWS公式GitHubタグから候補版を列挙し、対象アーキテクチャの公式配布ZIPに付く`Last-Modified`がカットオフ以前の中で最も新しいSemVerを選びます。ZIPはAWS CLI TeamのPGP署名と公式fingerprintの両方を検証します。
-- Claude Code: Anthropic公式GitHub Releasesの`published_at`がカットオフ以前で、draftでもprereleaseでもない中から最も新しいSemVerを選びます。Anthropicの署名済み`manifest.json`を検証し、その中のSHA-256とファイルサイズが一致するLinuxバイナリだけを導入します。
+- AWS CLI v2: AWS公式リポジトリの全履歴を含むCHANGELOGから候補版を列挙し、対象アーキテクチャの公式配布ZIPに付く`Last-Modified`がカットオフ以前の中で最も新しいSemVerを選びます。ZIPはAWS CLI TeamのPGP署名を検証し、実際に署名した鍵のprimary fingerprintが公式値と一致することも確認します。
+- Claude Code: Anthropic公式GitHub Releasesを最終ページまで取得し、`published_at`がカットオフ以前で、draftでもprereleaseでもない全候補から最も新しいSemVerを選びます。Anthropicの署名済み`manifest.json`について、鍵ファイルに公式primary fingerprint以外が含まれないことと実際の署名者がその鍵であることを検証し、その中のSHA-256とファイルサイズが一致するLinuxバイナリだけを導入します。
 - Dev Containers CLI: 下記の構成確認用ラッパーはnpmの公開時刻から同じ14日ルールを満たす版を選びます。VS Code拡張機能に内蔵されたCLIは拡張機能側で管理され、コンテナへ導入する依存には含みません。
 
 `mcr.microsoft.com/devcontainers/python:3.12-bookworm`は、Python 3.12とBookwormという互換性系列だけを指定するフローティングタグです。Containerfile実行前に必要となるブートストラップイメージのため、上記リゾルバーの対象外です。

@@ -108,17 +108,6 @@ download() {
         -o "$2"
 }
 
-fingerprint_from_key() {
-    key_file=$1
-    gpg_home=$2
-    gpg --batch \
-        --homedir "$gpg_home" \
-        --with-colons \
-        --import-options show-only \
-        --import "$key_file" 2>/dev/null \
-        | awk -F: '$1 == "fpr" { print $10; exit }'
-}
-
 aws_version=$(jq -er '.aws_cli.version' "$temporary_directory/resolved-releases.json")
 aws_url="https://awscli.amazonaws.com/awscli-exe-linux-$aws_architecture-$aws_version.zip"
 download "$aws_url" "$temporary_directory/awscliv2.zip"
@@ -127,14 +116,12 @@ download "$aws_url.sig" "$temporary_directory/awscliv2.zip.sig"
 aws_gpg_home="$temporary_directory/aws-gnupg"
 install -d -m 0700 "$aws_gpg_home"
 aws_key=/usr/local/lib/devcontainer/aws-cli-public-key.asc
-aws_fingerprint=$(fingerprint_from_key "$aws_key" "$aws_gpg_home")
-if [ "$aws_fingerprint" != "FB5DB77FD5C118B80511ADA8A6310ACC4672475C" ]; then
-    echo "unexpected AWS CLI signing key fingerprint: $aws_fingerprint" >&2
-    exit 1
-fi
-gpg --batch --homedir "$aws_gpg_home" --import "$aws_key"
-gpg --batch --homedir "$aws_gpg_home" \
-    --verify "$temporary_directory/awscliv2.zip.sig" "$temporary_directory/awscliv2.zip"
+/usr/local/lib/devcontainer/verify-release-signature.sh \
+    "$aws_key" \
+    "$aws_gpg_home" \
+    "FB5DB77FD5C118B80511ADA8A6310ACC4672475C" \
+    "$temporary_directory/awscliv2.zip.sig" \
+    "$temporary_directory/awscliv2.zip"
 
 unzip -q "$temporary_directory/awscliv2.zip" -d "$temporary_directory/aws-installer"
 "$temporary_directory/aws-installer/aws/install" -i /usr/local/aws-cli -b /usr/local/bin
@@ -155,14 +142,12 @@ download "$claude_base_url/manifest.json.sig" "$temporary_directory/claude-manif
 
 claude_gpg_home="$temporary_directory/claude-gnupg"
 install -d -m 0700 "$claude_gpg_home"
-claude_fingerprint=$(fingerprint_from_key "$temporary_directory/claude-code.asc" "$claude_gpg_home")
-if [ "$claude_fingerprint" != "31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE" ]; then
-    echo "unexpected Claude Code signing key fingerprint: $claude_fingerprint" >&2
-    exit 1
-fi
-gpg --batch --homedir "$claude_gpg_home" --import "$temporary_directory/claude-code.asc"
-gpg --batch --homedir "$claude_gpg_home" \
-    --verify "$temporary_directory/claude-manifest.json.sig" "$temporary_directory/claude-manifest.json"
+/usr/local/lib/devcontainer/verify-release-signature.sh \
+    "$temporary_directory/claude-code.asc" \
+    "$claude_gpg_home" \
+    "31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE" \
+    "$temporary_directory/claude-manifest.json.sig" \
+    "$temporary_directory/claude-manifest.json"
 
 manifest_version=$(jq -er '.version' "$temporary_directory/claude-manifest.json")
 if [ "$manifest_version" != "$claude_version" ]; then

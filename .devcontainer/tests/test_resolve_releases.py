@@ -26,6 +26,13 @@ def release(
     }
 
 
+def aws_changelog(*versions: str) -> str:
+    return "\n".join(
+        f"{version}\n{'=' * len(version)}\n\n* release notes\n"
+        for version in versions
+    )
+
+
 class TimestampTests(unittest.TestCase):
     def test_requires_timezone(self) -> None:
         with self.assertRaisesRegex(resolver.ResolutionError, "UTC offset"):
@@ -112,6 +119,42 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(len(requested_urls), 2)
         self.assertIn("page=2", requested_urls[1])
 
+    def test_selects_highest_semver_only_after_fetching_every_page(self) -> None:
+        first_page = [release("2.9.0", "2026-08-01T00:00:00Z")]
+        first_page.extend(
+            release(f"1.0.{index}", "2026-08-01T00:00:00Z")
+            for index in range(resolver.PAGE_SIZE - 1)
+        )
+        responses = iter(
+            (
+                first_page,
+                [release("2.10.0", "2026-08-01T00:00:00Z")],
+            )
+        )
+
+        selected = resolver.resolve_repository(
+            "example/tool",
+            datetime(2026, 8, 28, tzinfo=timezone.utc),
+            required_major=2,
+            fetch_json=lambda _url: next(responses),
+        )
+
+        self.assertEqual(selected["tag_name"], "2.10.0")
+
+    def test_fails_closed_if_page_limit_prevents_complete_selection(self) -> None:
+        full_page = [
+            release(f"2.0.{index}", "2026-08-01T00:00:00Z")
+            for index in range(resolver.PAGE_SIZE)
+        ]
+
+        with self.assertRaisesRegex(resolver.ResolutionError, "pagination.*safety limit"):
+            resolver.resolve_repository(
+                "example/tool",
+                datetime(2026, 8, 28, tzinfo=timezone.utc),
+                required_major=2,
+                fetch_json=lambda _url: full_page,
+            )
+
     def test_rejects_unexpected_response_shape(self) -> None:
         with self.assertRaisesRegex(resolver.ResolutionError, "Unexpected"):
             resolver.resolve_repository(
@@ -136,11 +179,7 @@ class AwsCliTests(unittest.TestCase):
         selected = resolver.resolve_aws_cli(
             self.cutoff,
             "amd64",
-            fetch_json=lambda _url: [
-                {"name": "2.9.0"},
-                {"name": "preview"},
-                {"name": "2.10.0"},
-            ],
+            fetch_text=lambda _url: aws_changelog("2.9.0", "preview", "2.10.0"),
             fetch_headers=fetch_headers,
         )
 
@@ -161,12 +200,34 @@ class AwsCliTests(unittest.TestCase):
         selected = resolver.resolve_aws_cli(
             self.cutoff,
             "arm64",
-            fetch_json=lambda _url: [{"name": "2.10.0"}, {"name": "2.9.0"}],
+            fetch_text=lambda _url: aws_changelog("2.10.0", "2.9.0"),
             fetch_headers=fetch_headers,
         )
 
         self.assertEqual(selected["version"], "2.9.0")
         self.assertIn("linux-aarch64", selected["download_url"])
+
+    def test_selects_highest_semver_from_complete_unsorted_changelog(self) -> None:
+        selected = resolver.resolve_aws_cli(
+            self.cutoff,
+            "amd64",
+            fetch_text=lambda _url: aws_changelog("2.9.0", "1.99.0", "2.10.0"),
+            fetch_headers=lambda _url: {
+                "Last-Modified": "Thu, 27 Aug 2026 23:59:59 GMT"
+            },
+        )
+
+        self.assertEqual(selected["version"], "2.10.0")
+
+    def test_changelog_parser_requires_a_release_heading(self) -> None:
+        parsed = resolver.parse_aws_cli_versions(
+            "2.99.0 mentioned in prose\n\n2.10.0\n=======\n\n2.9.0\n=====\n"
+        )
+
+        self.assertEqual(
+            parsed,
+            [((2, 10, 0), "2.10.0"), ((2, 9, 0), "2.9.0")],
+        )
 
 
 class ResultTests(unittest.TestCase):
