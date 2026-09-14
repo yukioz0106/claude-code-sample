@@ -14,6 +14,8 @@ Claude Code を AWS Bedrock 経由で利用するための標準リポジトリ�
 
 `aws login`はAWS CLI v2.32.0以降で利用できます。コンテナには対応するAWS CLI v2を導入し、実行時にもスクリプトでバージョンを確認します。
 
+Dev ContainerのOSはDebian 12 Bookwormです。BullseyeはEOLのため使用しません。
+
 Dev ContainersのPodman互換性はPodman 5以降が公式の目安です。社内標準環境で別バージョンを使う場合は、後述の構成確認が成功することを確認してください。ComposeプロバイダーとPodman APIソケットの設定は、この構成では参照されません。
 
 ## 利用手順
@@ -23,6 +25,8 @@ Dev ContainersのPodman互換性はPodman 5以降が公式の目安です。社�
 1. このリポジトリをクローンします。
 2. VS Codeでリポジトリを開きます。
 3. `Dev Containers: Reopen in Container`を実行します。
+
+起動処理はビルド直前のUTC時刻を生成し、その時点で公開から14日以上経過した依存を毎回選び直します。このため、初回ビルドと再ビルドにはGitHub、Debian Snapshot、AWS、Anthropic、npm（構成確認用CLIを使う場合）へのネットワーク接続が必要です。
 
 既存のDev Containerがある状態で`.devcontainer/Containerfile`または`.devcontainer/devcontainer.json`の更新を取得した場合は、`Dev Containers: Rebuild and Reopen in Container`を実行します。
 
@@ -268,7 +272,7 @@ APIキーはBedrock専用なので、APIキー方式の確認に`aws sts get-cal
 VS Codeと同じDev Containers CLIで起動確認する場合は、次のコマンドを実行します。このコマンドはPodmanを直接呼び出し、Composeは呼び出しません。
 
 ```bash
-npx --yes @devcontainers/cli up \
+./.devcontainer/devcontainer-cli.sh up \
   --workspace-folder . \
   --docker-path podman \
   --buildkit never
@@ -280,6 +284,44 @@ npx --yes @devcontainers/cli up \
 podman ps
 ```
 
+コンテナ内では、OS、ツール、ワークスペースを次のように確認できます。
+
+```bash
+cat /etc/os-release
+python --version
+aws --version
+claude --version
+cat /usr/local/share/devcontainer/resolved-releases.json
+cat /usr/local/share/devcontainer/apt-packages.txt
+pwd
+ls -la /workspace
+findmnt /workspace
+```
+
+`VERSION_ID="12"`、`VERSION_CODENAME=bookworm`、作業ディレクトリが`/workspace`となり、同ディレクトリにこのリポジトリの内容が表示されれば正常です。`/workspace`が空の場合は、まずPodman 5以降で再現するか確認し、`podman inspect <container-id>`の`Mounts`でホストのリポジトリが`/workspace`へbind mountされているか確認してください。
+
+### 依存バージョンの動的選定方針
+
+Dev Container内へ明示的に導入するAPTパッケージ、AWS CLI、Claude Codeは、バージョンをリポジトリへ固定していません。ユーザーがビルドを開始するたび、次の手順で「公開から14日以上（336時間）経過した中で最も新しい安定版」を選びます。
+
+1. `initializeCommand`がホスト上でビルド開始時刻をUTC秒単位で生成する
+2. その時刻ファイルをContainerfileの入力にして、過去の依存導入レイヤーのキャッシュを無効化する
+3. ビルド開始時刻から正確に`14 * 24 * 60 * 60`秒を引いた時刻をカットオフとする
+4. 各配布元に合った方法で候補を選び、検証に成功した配布物だけをインストールする
+
+対象ごとの判定方法は次のとおりです。
+
+- Debian APT: カットオフ時刻を指定したDebian SnapshotのBookworm／Bookworm Securityを使用します。指定時刻ちょうどのSnapshotがない場合、Debian Snapshotの仕様によりそれ以前で最も新しいSnapshotが使用されます。パッケージ名だけを指定し、Snapshot内の候補版をインストールします。
+- AWS CLI v2: AWS公式リポジトリの全履歴を含むCHANGELOGから候補版を列挙し、対象アーキテクチャの公式配布ZIPに付く`Last-Modified`がカットオフ以前の中で最も新しいSemVerを選びます。ZIPはAWS CLI TeamのPGP署名を検証し、実際に署名した鍵のprimary fingerprintが公式値と一致することも確認します。
+- Claude Code: Anthropic公式GitHub Releasesを最終ページまで取得し、`published_at`がカットオフ以前で、draftでもprereleaseでもない全候補から最も新しいSemVerを選びます。Anthropicの署名済み`manifest.json`について、鍵ファイルに公式primary fingerprint以外が含まれないことと実際の署名者がその鍵であることを検証し、その中のSHA-256とファイルサイズが一致するLinuxバイナリだけを導入します。
+- Dev Containers CLI: 下記の構成確認用ラッパーはnpmの公開時刻から同じ14日ルールを満たす版を選びます。VS Code拡張機能に内蔵されたCLIは拡張機能側で管理され、コンテナへ導入する依存には含みません。
+
+`mcr.microsoft.com/devcontainers/python:3.12-bookworm`は、Python 3.12とBookwormという互換性系列だけを指定するフローティングタグです。Containerfile実行前に必要となるブートストラップイメージのため、上記リゾルバーの対象外です。
+
+同じcommitでもビルド日が変われば、導入版が変わる可能性があります。これはビルド時点で都度選定する今回の要件によるものです。選定時刻、カットオフ、公開時刻、導入版、取得URLはイメージ内の`/usr/local/share/devcontainer/resolved-releases.json`へ、APTの実導入版は`/usr/local/share/devcontainer/apt-packages.txt`へ保存されます。申請・監査で再現が必要な場合は、この2ファイルと完成イメージのdigestを一緒に記録してください。
+
+公開情報の取得、14日以上経過した候補の発見、fingerprint、PGP署名、checksum、ファイルサイズ、または導入後のバージョン確認のどれかに失敗した場合、別版へ無条件にフォールバックせずビルドを停止します。Claude Codeの自動更新と手動更新も共有設定で停止し、版の更新は次回のDev Container rebuildだけで行います。
+
 ### Podman 運用方針
 
 - `privileged` は使用しません。
@@ -287,7 +329,7 @@ podman ps
 - `label=disable` により、SELinuxが有効なホストでもワークスペースのbind mountを利用できます。一方で、このコンテナに対するSELinuxのラベル分離は無効になるため、信頼できるリポジトリだけを開き、追加の機密ディレクトリを安易にマウントしないでください。AWS Loginの設定とキャッシュには、ホストのディレクトリではなくPodman Named Volumeを使用します。
 - Dev ContainersからPodmanのbuild/create/start/execを直接使用し、ComposeとPodman APIソケットは使用しません。
 - ビルド定義はOCI互換の `.devcontainer/Containerfile` です。
-- 外部のベースイメージは `mcr.microsoft.com/...` の完全修飾名を使用します。
+- 外部のベースイメージは`mcr.microsoft.com/...`の完全修飾名とBookwormのフローティングタグを使用します。
 - ワークスペースは `/workspace`、実行ユーザーは `vscode` です。
 - `dev.containers.dockerPath` と `devcontainer.json` の `build.dockerfile` はDev Containers仕様上の互換名です。実際のコマンドはPodman、実際のファイル名は `Containerfile` です。
 
@@ -311,6 +353,11 @@ APIキーはローカル設定ファイルから Claude Code のセッション�
 - [VS Code: Alternate ways to install Docker (Podman)](https://code.visualstudio.com/remote/advancedcontainers/docker-options)
 - [VS Code: Improve disk performance（Named Volume）](https://code.visualstudio.com/remote/advancedcontainers/improve-performance)
 - [Dev Containers CLI: Change Log](https://github.com/devcontainers/cli/blob/main/CHANGELOG.md)
+- [Dev Container specification: initializeCommand](https://github.com/devcontainers/spec/blob/main/docs/specs/devcontainerjson-reference.md#lifecycle-scripts)
+- [Debian Snapshot usage](https://snapshot.debian.org/)
+- [AWS CLI installation and PGP verification](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
+- [GitHub REST API: Releases](https://docs.github.com/en/rest/releases/releases)
+- [Claude Code version management and binary integrity](https://code.claude.com/docs/en/setup)
 - [Podman: Volume mount permission denied (SELinux)](https://github.com/containers/podman/blob/main/troubleshooting.md#2-cant-use-volume-mount-get-permission-denied)
 - [Dev Container: Using Images and Container Build Files](https://containers.dev/guide/dockerfile)
 - [VS Code: Create a Dev Container（再ビルド）](https://code.visualstudio.com/docs/devcontainers/create-dev-container)

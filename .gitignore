@@ -1,2 +1,4 @@
 .env
 /.claude/settings.local.json
+/.devcontainer/.build-resolution-time
+/.devcontainer/.build-resolution-time.tmp
