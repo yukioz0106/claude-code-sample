@@ -44,8 +44,8 @@ retry_acquisition() {
 export DEBIAN_FRONTEND=noninteractive
 retry_acquisition 'index update' -o APT::Update::Error-Mode=any update
 retry_acquisition 'package download' install -y --no-install-recommends \
-    --allow-downgrades --download-only "$@"
+    --download-only "$@"
 
 printf 'APT [%s] installing downloaded packages\n' \
     "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >&2
-apt-get install -y --no-install-recommends --allow-downgrades --no-download "$@"
+apt-get install -y --no-install-recommends --no-download "$@"

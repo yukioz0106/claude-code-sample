@@ -1,6 +1,19 @@
-# Debian Snapshotの障害確認手順
+# APTの障害確認手順
 
-Debian Snapshotの一覧・パッケージ取得で503・504が続く場合は、ビルドログを保存し、実行ホストからSnapshotまでの通信を確認します。リポジトリ側の再試行は断続的な障害を扱いますが、上流の継続的な障害を修復するものではありません。
+APTの一覧・パッケージ取得でエラーが続く場合は、ビルドログを保存し、実行ホストから取得先までの通信を確認します。現在は通常のDebian公式リポジトリを使用します。リポジトリ側の再試行は断続的な障害を扱いますが、上流の継続的な障害を修復するものではありません。
+
+## 現在の取得先と旧構成からの変更
+
+| 取得先 | suite |
+| --- | --- |
+| `https://deb.debian.org/debian` | `bookworm`、`bookworm-updates` |
+| `https://deb.debian.org/debian-security` | `bookworm-security` |
+
+APTパッケージの14日ルールを解除し、Debian Snapshotへの依存を取り除いています。AWS CLI・Claude Codeにはビルド開始時点の14日ルールを引き続き適用します。TLS証明書検証、Debianの署名検証、メタデータの有効期限チェックは有効です。Snapshot専用のPin-Priorityと`--allow-downgrades`は使用しません。
+
+旧構成ではSnapshotの取得が6回失敗すると停止しました。取得先を変更した現在の構成を反映するには、`Dev Containers: Rebuild and Reopen in Container`を実行します。ログに`APT repositories: debian-current`と上記URLが現れることを確認してください。`APT snapshot:`が現れる場合は、ビルドしたブランチ・ディレクトリと更新の反映を確認します。
+
+既存のプロキシを経由して取得します。今回の切り替えに伴うPC側やPodmanのプロキシ変更は不要です。組織の接続制限で`deb.debian.org:443`が許可されていない環境では、管理者に許可方針を確認します。
 
 ## ビルドで行う処理
 
@@ -14,7 +27,7 @@ Debian Snapshotの一覧・パッケージ取得で503・504が続く場合は�
 
 APT内部の再試行を0とし、取得段階ごとにスクリプト側で再試行します。待機時間は10・20・30・40・50秒です。各試行ではHTTP(S)の接続・受信タイムアウトを60秒、取得処理全体の上限を300秒とし、終了しない場合は15秒後に強制終了します。タイムアウトは通常124、強制終了時は137として記録されます。これらの取得失敗も上限回数まで再試行します。
 
-Snapshotの指定時刻はビルド開始から正確に14日前です。時間単位への丸めは行いません。一般のDebianミラーへの自動切り替え、署名検証・TLS証明書検証の無効化は行いません。
+一覧取得に失敗した場合、ベースイメージから引き継いだ古い一覧でインストールを続けません。別ホストへの独自のフォールバックや、署名検証・TLS証明書検証の無効化は行いません。
 
 ## プロキシの設定元を確認する
 
@@ -30,7 +43,7 @@ Linux側では、`/etc/environment`、`/etc/profile.d/`、ユーザーのシェ�
 
 - ビルドを実行したホスト、OS、Podmanのバージョン、rootlessの有無。
 - リポジトリのcommitと未commitの変更差分、使用したベースイメージのIDまたはdigest。
-- ビルドログ全体。`APT snapshot:`、`build resolution:`、各取得段階のUTC時刻・試行回数・終了コードを含める。
+- ビルドログ全体。`APT repositories:`、取得先の設定、`build resolution:`、各取得段階のUTC時刻・試行回数・終了コードを含める。
 - 失敗した完全なURLとHTTPステータス、発生時刻。日本時間で共有するときはJSTであることを明記する。
 - CONNECT応答と、その後のHTTP応答ヘッダー。`server`、`via`、`X-Cache`、`X-Served-By`、`X-Timer`、`Date`、`Location`がある場合は保存する。
 
@@ -39,16 +52,18 @@ Linux側では、`/etc/environment`、`/etc/profile.d/`、ユーザーのシェ�
 ```text
 /usr/local/share/devcontainer/resolved-releases.json
 /usr/local/share/devcontainer/apt-packages.txt
-/usr/local/share/devcontainer/apt-snapshot-timestamp.txt
+/usr/local/share/devcontainer/apt-sources.sources
 ```
+
+`resolved-releases.json`の`schema_version`は`2`です。`minimum_age_applies_to`は`aws_cli`と`claude_code`のみ、`apt.minimum_age_seconds`は`null`（待機期間なし）と記録されます。APTの実際の取得先は`apt-sources.sources`、明示的に指定したパッケージの実導入版は`apt-packages.txt`で確認します。SnapshotのURLや指定時刻は現行の監査記録に含めません。
 
 ## 実行ホストから応答を採取する
 
-以下はLinuxホストで実行する例です。`snapshot_timestamp`をビルドログの値へ置き換えます。既存のプロキシ環境変数を使い、証明書検証を有効にしたまま確認します。
+以下はLinuxホストで実行する例です。`target_url`をビルドログで失敗した完全なURLへ置き換えます。既存のプロキシ環境変数を使い、証明書検証を有効にしたまま確認します。
 
 ```bash
-snapshot_timestamp=20261022T042930Z
-report_directory=$(mktemp -d /tmp/debian-snapshot-check.XXXXXX)
+target_url=https://deb.debian.org/debian-security/dists/bookworm-security/InRelease
+report_directory=$(mktemp -d /tmp/debian-apt-check.XXXXXX)
 date -u '+%Y-%m-%dT%H:%M:%SZ' > "$report_directory/request-start.txt"
 
 curl --http1.1 --fail-with-body --location \
@@ -56,7 +71,7 @@ curl --http1.1 --fail-with-body --location \
   --dump-header "$report_directory/headers.txt" \
   --output "$report_directory/body" \
   --write-out 'http_code=%{http_code}\nconnect_code=%{http_connect}\nremote_ip=%{remote_ip}\nssl_verify_result=%{ssl_verify_result}\ntime_connect=%{time_connect}\ntime_starttransfer=%{time_starttransfer}\ntime_total=%{time_total}\nurl_effective=%{url_effective}\n' \
-  "https://snapshot.debian.org/archive/debian-security/$snapshot_timestamp/dists/bookworm-security/InRelease" \
+  "$target_url" \
   > "$report_directory/metrics.txt"
 
 printf 'Saved response to %s\n' "$report_directory"
@@ -71,15 +86,15 @@ HTTPエラーではcurlも非0で終了します。保存した`headers.txt`・`
 | 確認対象 | 確認内容 |
 | --- | --- |
 | 実際の通信経路 | Linuxホストのプロキシ設定、コンテナに渡された引数、接続先が想定どおりか。PC側の切り替えで比較したと判断しない |
-| 社内プロキシ | 指定時刻の`CONNECT snapshot.debian.org:443`のアクセスログ、接続エラー、切断、タイムアウト、接続制限を確認。暗号化トンネルだけを扱う場合、内部のURLやHTTPステータスがログに見えない点を考慮する |
+| 社内プロキシ | 指定時刻の`CONNECT deb.debian.org:443`と実際のリダイレクト先のアクセスログ、接続エラー、切断、タイムアウト、接続制限を確認。暗号化トンネルだけを扱う場合、内部のURLやHTTPステータスがログに見えない点を考慮する |
 | TLS | CONNECTの成否、証明書の検証結果、TLS検査の有無と証明書配布方針を確認。検証無効化で回避しない |
-| CDN・上流応答 | クライアントが受け取った503・504のヘッダーと時刻を照合。`X-Cache: MISS`だけで障害箇所を断定せず、必要ならDebian Snapshot運用側へ照会する |
+| CDN・上流応答 | クライアントが受け取った503・504のヘッダーと時刻を照合。`X-Cache: MISS`だけで障害箇所を断定せず、必要ならDebianの配布サービス運用側へ照会する |
 | 必要な全ファイル | `debian`のBookworm・Bookworm Updates、`debian-security`のBookworm Securityについて、署名付きメタデータ、圧縮一覧、`.deb`、リダイレクト先の取得を確認する |
-| 継続的な提供方法 | 障害が続く場合、承認されたSnapshotミラー、署名付きメタデータと本体を保持する社内ミラー、または検証済みOCIイメージの社内配布を検討する |
+| 継続的な提供方法 | 障害が続く場合、承認されたDebianミラー、署名付きメタデータと本体を保持する社内ミラー、または検証済みOCIイメージの社内配布を検討する |
 
-HTTPSのCONNECTを通すプロキシを追加するだけでは、暗号化されたパッケージ内容のキャッシュができるとは限りません。社内ミラー・イメージ配布を採用する場合は、署名検証、Snapshot日時、14日の待機期間、更新周期、使用するイメージdigestを運用として明確にします。イメージ配布は「利用者のビルドごとに最新の14日経過版を選ぶ」現行運用も変更します。
+HTTPSのCONNECTを通すプロキシを追加するだけでは、暗号化されたパッケージ内容のキャッシュができるとは限りません。社内ミラー・イメージ配布を採用する場合は、署名検証、メタデータの有効期限、AWS CLI・Claude Codeの14日の待機期間、更新周期、使用するイメージdigestを運用として明確にします。イメージ配布は「利用者のビルドごとにツールの最新の14日経過版を選ぶ」現行運用も変更します。
 
-代替ホストは、実際のホスト・プロキシ経由で動作と利用可否を確認してから採用します。取得先ホストを変更するときは、APTの`Pin: origin`と署名鍵・Snapshot日時の扱いも併せてレビューします。
+代替ホストは、実際のホスト・プロキシ経由で動作と利用可否を確認してから採用します。取得先ホストを変更するときは、Bookwormの3系統の提供、署名鍵、有効期限、監査記録の整合性も併せてレビューします。
 
 ## 復旧の確認
 
@@ -95,5 +110,6 @@ python3 -m unittest discover -s .devcontainer/tests -v
 
 - [APT: error-on、download-only、no-download](https://manpages.debian.org/bookworm/apt/apt-get.8.en.html)
 - [APT: HTTPのタイムアウト・プロキシ](https://manpages.debian.org/bookworm/apt/apt-transport-http.1.en.html)
-- [Debian Snapshotの利用方法](https://snapshot.debian.org/)
+- [Debian公式CDNミラー](https://deb.debian.org/)
+- [APTの取得先設定・署名鍵・有効期限](https://manpages.debian.org/bookworm/apt/sources.list.5.en.html)
 - [VS Code Remote-SSH](https://code.visualstudio.com/docs/remote/ssh)

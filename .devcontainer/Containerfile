@@ -20,7 +20,8 @@ COPY resolve_releases.py install-reviewed-tools.sh install-apt-packages.sh \
     aws-cli-public-key.asc \
     /usr/local/lib/devcontainer/
 
-# Resolve and install packages using the single build-start timestamp above.
+# Resolve AWS CLI and Claude Code using the build-start timestamp above;
+# install APT packages from the current official Bookworm repositories.
 # The script fails closed if release metadata or a signature cannot be verified.
 RUN chmod 0755 \
         /usr/local/lib/devcontainer/resolve_releases.py \

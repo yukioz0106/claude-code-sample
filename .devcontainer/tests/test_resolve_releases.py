@@ -231,7 +231,7 @@ class AwsCliTests(unittest.TestCase):
 
 
 class ResultTests(unittest.TestCase):
-    def test_cutoff_is_exactly_fourteen_days(self) -> None:
+    def test_fourteen_day_cutoff_applies_only_to_aws_cli_and_claude(self) -> None:
         fake_aws = {
             "repository": "aws/aws-cli",
             "version": "2.3.4",
@@ -258,14 +258,17 @@ class ResultTests(unittest.TestCase):
             )
 
         self.assertEqual(result["cutoff_time"], "2026-08-28T00:00:01Z")
+        self.assertEqual(result["schema_version"], 2)
+        self.assertEqual(result["minimum_age_seconds"], 14 * 24 * 60 * 60)
         self.assertEqual(
-            result["debian_snapshot"]["requested_timestamp"],
-            "20260828T000001Z",
+            result["minimum_age_applies_to"], ["aws_cli", "claude_code"],
         )
+        self.assertNotIn("debian_snapshot", result)
         self.assertEqual(result["aws_cli"]["version"], "2.3.4")
         self.assertEqual(result["claude_code"]["version"], "5.6.7")
-        resolve_aws.assert_called_once()
-        resolve_repository.assert_called_once()
+        cutoff = datetime(2026, 8, 28, 0, 0, 1, tzinfo=timezone.utc)
+        resolve_aws.assert_called_once_with(cutoff, "amd64")
+        resolve_repository.assert_called_once_with("anthropics/claude-code", cutoff)
 
 
 if __name__ == "__main__":

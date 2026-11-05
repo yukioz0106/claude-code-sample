@@ -100,6 +100,8 @@ class AptInstallationTests(unittest.TestCase):
         self.assertIn("Acquire::Retries=0", state["calls"][0])
         self.assertIn("--download-only", state["calls"][1])
         self.assertIn("--no-download", state["calls"][2])
+        for call in state["calls"]:
+            self.assertNotIn("--allow-downgrades", call)
         self.assertEqual(state["calls"][1][-2:], ["git", "jq"])
         self.assertEqual(state["calls"][2][-2:], ["git", "jq"])
         self.assertEqual(sleeps, [])
