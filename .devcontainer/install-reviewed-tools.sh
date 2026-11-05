@@ -50,6 +50,7 @@ trap cleanup EXIT HUP INT TERM
 resolution_epoch=$(date -u -d "$resolution_time" '+%s')
 cutoff_epoch=$((resolution_epoch - 14 * 24 * 60 * 60))
 snapshot_timestamp=$(date -u -d "@$cutoff_epoch" '+%Y%m%dT%H%M%SZ')
+printf 'APT snapshot: %s (build resolution: %s)\n' "$snapshot_timestamp" "$resolution_time"
 
 # Disable every non-snapshot APT source inherited from the base image. A
 # timestamp with no exact import resolves to the latest earlier import.
@@ -81,9 +82,10 @@ Pin: origin snapshot.debian.org
 Pin-Priority: 1001
 EOF
 
-export DEBIAN_FRONTEND=noninteractive
-apt-get -o Acquire::Retries=5 update
-apt-get -o Acquire::Retries=5 install -y --no-install-recommends --allow-downgrades \
+# Start with only the lists fetched for this build's snapshot. A failed update
+# must never fall back to lists inherited from the base image.
+rm -rf /var/lib/apt/lists/*
+/usr/local/lib/devcontainer/install-apt-packages.sh \
     ca-certificates \
     curl \
     git \

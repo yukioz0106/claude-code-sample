@@ -28,7 +28,7 @@ Dev ContainersのPodman互換性はPodman 5以降が公式の目安です。社�
 
 起動処理はビルド直前のUTC時刻を生成し、その時点で公開から14日以上経過した依存を毎回選び直します。このため、初回ビルドと再ビルドにはGitHub、Debian Snapshot、AWS、Anthropic、npm（構成確認用CLIを使う場合）へのネットワーク接続が必要です。
 
-既存のDev Containerがある状態で`.devcontainer/Containerfile`または`.devcontainer/devcontainer.json`の更新を取得した場合は、`Dev Containers: Rebuild and Reopen in Container`を実行します。
+既存のDev Containerがある状態で`.devcontainer/Containerfile`、`.devcontainer/devcontainer.json`または依存導入スクリプトの更新を取得した場合は、`Dev Containers: Rebuild and Reopen in Container`を実行します。
 
 ### 2. 使用するモデルを指定する
 
@@ -311,16 +311,26 @@ Dev Container内へ明示的に導入するAPTパッケージ、AWS CLI、Claude
 
 対象ごとの判定方法は次のとおりです。
 
-- Debian APT: カットオフ時刻を指定したDebian SnapshotのBookworm／Bookworm Securityを使用します。指定時刻ちょうどのSnapshotがない場合、Debian Snapshotの仕様によりそれ以前で最も新しいSnapshotが使用されます。パッケージ名だけを指定し、Snapshot内の候補版をインストールします。
+- Debian APT: カットオフ時刻を指定したDebian SnapshotのBookworm／Bookworm Updates／Bookworm Securityを使用します。指定時刻ちょうどのSnapshotがない場合、Debian Snapshotの仕様によりそれ以前で最も新しいSnapshotが使用されます。秒単位のカットオフで最新を選ぶ要件を維持するため、指定時刻を時間単位には丸めません。パッケージ名だけを指定し、Snapshot内の候補版をインストールします。
 - AWS CLI v2: AWS公式リポジトリの全履歴を含むCHANGELOGから候補版を列挙し、対象アーキテクチャの公式配布ZIPに付く`Last-Modified`がカットオフ以前の中で最も新しいSemVerを選びます。ZIPはAWS CLI TeamのPGP署名を検証し、実際に署名した鍵のprimary fingerprintが公式値と一致することも確認します。
 - Claude Code: Anthropic公式GitHub Releasesを最終ページまで取得し、`published_at`がカットオフ以前で、draftでもprereleaseでもない全候補から最も新しいSemVerを選びます。Anthropicの署名済み`manifest.json`について、鍵ファイルに公式primary fingerprint以外が含まれないことと実際の署名者がその鍵であることを検証し、その中のSHA-256とファイルサイズが一致するLinuxバイナリだけを導入します。
 - Dev Containers CLI: 下記の構成確認用ラッパーはnpmの公開時刻から同じ14日ルールを満たす版を選びます。VS Code拡張機能に内蔵されたCLIは拡張機能側で管理され、コンテナへ導入する依存には含みません。
 
 `mcr.microsoft.com/devcontainers/python:3.12-bookworm`は、Python 3.12とBookwormという互換性系列だけを指定するフローティングタグです。Containerfile実行前に必要となるブートストラップイメージのため、上記リゾルバーの対象外です。
 
-同じcommitでもビルド日が変われば、導入版が変わる可能性があります。これはビルド時点で都度選定する今回の要件によるものです。選定時刻、カットオフ、公開時刻、導入版、取得URLはイメージ内の`/usr/local/share/devcontainer/resolved-releases.json`へ、APTの実導入版は`/usr/local/share/devcontainer/apt-packages.txt`へ保存されます。申請・監査で再現が必要な場合は、この2ファイルと完成イメージのdigestを一緒に記録してください。
+同じcommitでもビルド日が変われば、導入版が変わる可能性があります。これはビルド時点で都度選定する今回の要件によるものです。選定時刻、カットオフ、公開時刻、導入版、取得URLはイメージ内の`/usr/local/share/devcontainer/resolved-releases.json`へ、APTの実導入版は`/usr/local/share/devcontainer/apt-packages.txt`へ、APTの指定Snapshot時刻は`/usr/local/share/devcontainer/apt-snapshot-timestamp.txt`へ保存されます。申請・監査で再現が必要な場合は、この3ファイルとベースイメージ・完成イメージのdigestを一緒に記録してください。
 
 公開情報の取得、14日以上経過した候補の発見、fingerprint、PGP署名、checksum、ファイルサイズ、または導入後のバージョン確認のどれかに失敗した場合、別版へ無条件にフォールバックせずビルドを停止します。Claude Codeの自動更新と手動更新も共有設定で停止し、版の更新は次回のDev Container rebuildだけで行います。
+
+### Debian Snapshotの503・504と長時間待機への対応
+
+APTの一覧取得とパッケージ本体のダウンロードは、各段階で最大6回（初回1回＋再試行5回）実行します。再試行前の待機は10・20・30・40・50秒です。APT内部の`Acquire::Retries`は0とし、503・504も含めてスクリプト側で処理全体を再試行します。
+
+一覧取得は`APT::Update::Error-Mode=any`で一時的なエラーも失敗として扱います。ベースイメージの古い一覧を削除してから取得し、成功するまで次の段階へ進みません。パッケージ本体は`--download-only`で先に揃え、成功後に`--no-download`でインストールします。dpkgによるインストール自体は一度だけ実行し、失敗を再試行で隠しません。
+
+HTTP(S)の接続・受信タイムアウトは60秒です。別途、各取得処理全体を300秒で打ち切り、終了しない場合は15秒後に強制終了します。上限は取得1回に対するもので、ビルド全体やdpkgの実行時間の上限ではありません。ビルドログにはSnapshot時刻、取得段階、UTC時刻、試行回数と終了コードを表示します。
+
+この対策は断続的な障害への再試行と、取得が完了しない場合の停止を行います。Snapshot側の障害が継続すればビルドは失敗します。管理者への共有事項とログの採取方法は[Debian Snapshotの障害確認手順](docs/debian-snapshot-troubleshooting.md)を参照してください。Remote-SSHでビルドする場合、ビルドが参照するのはLinuxホスト側のプロキシ環境変数です。
 
 ### Podman 運用方針
 
