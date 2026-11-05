@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resolve stable releases that have been public for at least 14 days."""
+"""Resolve AWS CLI and Claude Code releases with a minimum age of 14 days by default."""
 
 from __future__ import annotations
 
@@ -288,18 +288,13 @@ def resolve(resolution_time: datetime, architecture: str, minimum_age_days: int)
     aws_release = resolve_aws_cli(cutoff, architecture)
     claude_release = resolve_repository("anthropics/claude-code", cutoff)
 
-    snapshot_timestamp = cutoff.strftime("%Y%m%dT%H%M%SZ")
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "resolution_time": format_utc_timestamp(resolution_time),
         "cutoff_time": format_utc_timestamp(cutoff),
         "minimum_age_seconds": minimum_age_days * 24 * 60 * 60,
+        "minimum_age_applies_to": ["aws_cli", "claude_code"],
         "architecture": architecture,
-        "debian_snapshot": {
-            "requested_timestamp": snapshot_timestamp,
-            "debian_url": f"https://snapshot.debian.org/archive/debian/{snapshot_timestamp}/",
-            "security_url": f"https://snapshot.debian.org/archive/debian-security/{snapshot_timestamp}/",
-        },
         "aws_cli": aws_release,
         "claude_code": release_record("anthropics/claude-code", claude_release),
     }

@@ -47,43 +47,36 @@ trap cleanup EXIT HUP INT TERM
     --minimum-age-days 14 \
     --output "$temporary_directory/resolved-releases.json"
 
-resolution_epoch=$(date -u -d "$resolution_time" '+%s')
-cutoff_epoch=$((resolution_epoch - 14 * 24 * 60 * 60))
-snapshot_timestamp=$(date -u -d "@$cutoff_epoch" '+%Y%m%dT%H%M%SZ')
+printf 'APT repositories: debian-current (Bookworm; build resolution: %s)\n' "$resolution_time"
 
-# Disable every non-snapshot APT source inherited from the base image. A
-# timestamp with no exact import resolves to the latest earlier import.
+# Use only the current official Bookworm repositories. The 14-day waiting
+# period applies to AWS CLI and Claude Code, not to APT packages.
 rm -f /etc/apt/sources.list
 for source_file in /etc/apt/sources.list.d/*; do
     [ -e "$source_file" ] || continue
     rm -f -- "$source_file"
 done
+rm -f /etc/apt/preferences.d/devcontainer-snapshot
 
-cat > /etc/apt/sources.list.d/debian.sources <<EOF
+cat > /etc/apt/sources.list.d/debian.sources <<'EOF'
 Types: deb
-URIs: https://snapshot.debian.org/archive/debian/$snapshot_timestamp/
+URIs: https://deb.debian.org/debian
 Suites: bookworm bookworm-updates
 Components: main
 Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
-Check-Valid-Until: no
 
 Types: deb
-URIs: https://snapshot.debian.org/archive/debian-security/$snapshot_timestamp/
+URIs: https://deb.debian.org/debian-security
 Suites: bookworm-security
 Components: main
 Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
-Check-Valid-Until: no
 EOF
+cat /etc/apt/sources.list.d/debian.sources
 
-cat > /etc/apt/preferences.d/devcontainer-snapshot <<'EOF'
-Package: *
-Pin: origin snapshot.debian.org
-Pin-Priority: 1001
-EOF
-
-export DEBIAN_FRONTEND=noninteractive
-apt-get -o Acquire::Retries=5 update
-apt-get -o Acquire::Retries=5 install -y --no-install-recommends --allow-downgrades \
+# Start with only the lists fetched for this build. A failed update must never
+# fall back to lists inherited from the base image.
+rm -rf /var/lib/apt/lists/*
+/usr/local/lib/devcontainer/install-apt-packages.sh \
     ca-certificates \
     curl \
     git \
@@ -202,14 +195,20 @@ jq \
     '.installed_versions = {
         "aws_cli": $aws_installed,
         "claude_code": $claude_installed
+    } | .apt = {
+        "repository_mode": "debian-current",
+        "minimum_age_seconds": null,
+        "sources_file": "/usr/local/share/devcontainer/apt-sources.sources",
+        "packages_file": "/usr/local/share/devcontainer/apt-packages.txt"
     }' \
     "$temporary_directory/resolved-releases.json" \
     > /usr/local/share/devcontainer/resolved-releases.json
 dpkg-query -W -f='${binary:Package}\t${Version}\n' \
     ca-certificates curl git gnupg groff iputils-ping jq less make unzip vim \
     > /usr/local/share/devcontainer/apt-packages.txt
-printf '%s\n' "$snapshot_timestamp" \
-    > /usr/local/share/devcontainer/apt-snapshot-timestamp.txt
+cp /etc/apt/sources.list.d/debian.sources \
+    /usr/local/share/devcontainer/apt-sources.sources
+rm -f /usr/local/share/devcontainer/apt-snapshot-timestamp.txt
 
 rm -rf /var/lib/apt/lists/*
 trap - EXIT HUP INT TERM

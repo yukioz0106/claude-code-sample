@@ -15,15 +15,18 @@ USER root
 # build. COPY therefore invalidates the dependency layer even when the
 # Containerfile itself has not changed.
 COPY .build-resolution-time /tmp/devcontainer-build-resolution-time
-COPY resolve_releases.py install-reviewed-tools.sh verify-release-signature.sh \
+COPY resolve_releases.py install-reviewed-tools.sh install-apt-packages.sh \
+    verify-release-signature.sh \
     aws-cli-public-key.asc \
     /usr/local/lib/devcontainer/
 
-# Resolve and install packages using the single build-start timestamp above.
+# Resolve AWS CLI and Claude Code using the build-start timestamp above;
+# install APT packages from the current official Bookworm repositories.
 # The script fails closed if release metadata or a signature cannot be verified.
 RUN chmod 0755 \
         /usr/local/lib/devcontainer/resolve_releases.py \
         /usr/local/lib/devcontainer/install-reviewed-tools.sh \
+        /usr/local/lib/devcontainer/install-apt-packages.sh \
         /usr/local/lib/devcontainer/verify-release-signature.sh \
     && /usr/local/lib/devcontainer/install-reviewed-tools.sh \
         /tmp/devcontainer-build-resolution-time \

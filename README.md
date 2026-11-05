@@ -26,9 +26,9 @@ Dev ContainersのPodman互換性はPodman 5以降が公式の目安です。社�
 2. VS Codeでリポジトリを開きます。
 3. `Dev Containers: Reopen in Container`を実行します。
 
-起動処理はビルド直前のUTC時刻を生成し、その時点で公開から14日以上経過した依存を毎回選び直します。このため、初回ビルドと再ビルドにはGitHub、Debian Snapshot、AWS、Anthropic、npm（構成確認用CLIを使う場合）へのネットワーク接続が必要です。
+起動処理はビルド直前のUTC時刻を生成し、その時点で公開から14日以上経過したAWS CLI・Claude Codeを毎回選び直します。APTパッケージは、14日の待機期間を設けず、通常のDebian公式リポジトリからBookworm向けの候補版を取得します。初回ビルドと再ビルドにはGitHub、Debianの`deb.debian.org`、AWS、Anthropic、npm（構成確認用CLIを使う場合）へのネットワーク接続が必要です。ベースイメージが未取得の場合や更新する場合は、Microsoft Container Registryへの接続も必要です。
 
-既存のDev Containerがある状態で`.devcontainer/Containerfile`または`.devcontainer/devcontainer.json`の更新を取得した場合は、`Dev Containers: Rebuild and Reopen in Container`を実行します。
+既存のDev Containerがある状態で`.devcontainer/Containerfile`、`.devcontainer/devcontainer.json`または依存導入スクリプトの更新を取得した場合は、`Dev Containers: Rebuild and Reopen in Container`を実行します。
 
 ### 2. 使用するモデルを指定する
 
@@ -293,6 +293,7 @@ aws --version
 claude --version
 cat /usr/local/share/devcontainer/resolved-releases.json
 cat /usr/local/share/devcontainer/apt-packages.txt
+cat /usr/local/share/devcontainer/apt-sources.sources
 pwd
 ls -la /workspace
 findmnt /workspace
@@ -302,7 +303,7 @@ findmnt /workspace
 
 ### 依存バージョンの動的選定方針
 
-Dev Container内へ明示的に導入するAPTパッケージ、AWS CLI、Claude Codeは、バージョンをリポジトリへ固定していません。ユーザーがビルドを開始するたび、次の手順で「公開から14日以上（336時間）経過した中で最も新しい安定版」を選びます。
+Dev Container内へ明示的に導入するAPTパッケージ、AWS CLI、Claude Codeは、バージョンをリポジトリへ固定していません。AWS CLIとClaude Codeは、ユーザーがビルドを開始するたび、次の手順で「公開から14日以上（336時間）経過した中で最も新しい安定版」を選びます。APTパッケージにはこの待機期間を適用しません。
 
 1. `initializeCommand`がホスト上でビルド開始時刻をUTC秒単位で生成する
 2. その時刻ファイルをContainerfileの入力にして、過去の依存導入レイヤーのキャッシュを無効化する
@@ -311,16 +312,34 @@ Dev Container内へ明示的に導入するAPTパッケージ、AWS CLI、Claude
 
 対象ごとの判定方法は次のとおりです。
 
-- Debian APT: カットオフ時刻を指定したDebian SnapshotのBookworm／Bookworm Securityを使用します。指定時刻ちょうどのSnapshotがない場合、Debian Snapshotの仕様によりそれ以前で最も新しいSnapshotが使用されます。パッケージ名だけを指定し、Snapshot内の候補版をインストールします。
+- Debian APT: `https://deb.debian.org/debian`の`bookworm`・`bookworm-updates`と、`https://deb.debian.org/debian-security`の`bookworm-security`を使用します。14日の待機期間は設けず、取得した一覧に基づくAPTの通常の候補選定で、指定パッケージと必要な依存をインストールします。OS系列はBookwormのままです。ベースイメージ内の全パッケージを一括更新する処理ではありません。Debianの署名検証、TLS証明書検証、メタデータの有効期限チェックは有効にし、Snapshot用の優先度設定や強制ダウングレードは使用しません。
 - AWS CLI v2: AWS公式リポジトリの全履歴を含むCHANGELOGから候補版を列挙し、対象アーキテクチャの公式配布ZIPに付く`Last-Modified`がカットオフ以前の中で最も新しいSemVerを選びます。ZIPはAWS CLI TeamのPGP署名を検証し、実際に署名した鍵のprimary fingerprintが公式値と一致することも確認します。
 - Claude Code: Anthropic公式GitHub Releasesを最終ページまで取得し、`published_at`がカットオフ以前で、draftでもprereleaseでもない全候補から最も新しいSemVerを選びます。Anthropicの署名済み`manifest.json`について、鍵ファイルに公式primary fingerprint以外が含まれないことと実際の署名者がその鍵であることを検証し、その中のSHA-256とファイルサイズが一致するLinuxバイナリだけを導入します。
 - Dev Containers CLI: 下記の構成確認用ラッパーはnpmの公開時刻から同じ14日ルールを満たす版を選びます。VS Code拡張機能に内蔵されたCLIは拡張機能側で管理され、コンテナへ導入する依存には含みません。
 
 `mcr.microsoft.com/devcontainers/python:3.12-bookworm`は、Python 3.12とBookwormという互換性系列だけを指定するフローティングタグです。Containerfile実行前に必要となるブートストラップイメージのため、上記リゾルバーの対象外です。
 
-同じcommitでもビルド日が変われば、導入版が変わる可能性があります。これはビルド時点で都度選定する今回の要件によるものです。選定時刻、カットオフ、公開時刻、導入版、取得URLはイメージ内の`/usr/local/share/devcontainer/resolved-releases.json`へ、APTの実導入版は`/usr/local/share/devcontainer/apt-packages.txt`へ保存されます。申請・監査で再現が必要な場合は、この2ファイルと完成イメージのdigestを一緒に記録してください。
+同じcommitでもビルド時点の配布状況が変われば、導入版が変わる可能性があります。監査用に次の3ファイルをイメージ内へ保存します。
+
+- `/usr/local/share/devcontainer/resolved-releases.json`: AWS CLI・Claude Codeの選定時刻、カットオフ、公開時刻または配布物の更新時刻、導入版、取得URL。`schema_version`は`2`で、`minimum_age_applies_to`に14日ルールの対象を明示します。`apt.repository_mode`は`debian-current`、`apt.minimum_age_seconds`は`null`（待機期間なし）です。旧`debian_snapshot`フィールドは出力しません。
+- `/usr/local/share/devcontainer/apt-packages.txt`: 明示的に指定したAPTパッケージの実導入版。
+- `/usr/local/share/devcontainer/apt-sources.sources`: ビルドで実際に使用したAPT取得先の設定。旧`apt-snapshot-timestamp.txt`を置き換えます。
+
+申請・監査では、この3ファイルとベースイメージ・完成イメージのdigestを一緒に記録してください。通常のミラーは配布内容が更新されるため、これらの記録だけでは同一イメージの再ビルドを保証できません。同一環境を再利用する必要がある場合は、完成イメージを保持してdigestで指定します。
 
 公開情報の取得、14日以上経過した候補の発見、fingerprint、PGP署名、checksum、ファイルサイズ、または導入後のバージョン確認のどれかに失敗した場合、別版へ無条件にフォールバックせずビルドを停止します。Claude Codeの自動更新と手動更新も共有設定で停止し、版の更新は次回のDev Container rebuildだけで行います。
+
+### APTの取得失敗と長時間待機への対応
+
+Debian Snapshotで503・504が継続する問題を受け、APTの取得先を通常のDebian公式リポジトリへ変更しました。APTに限って14日ルールを解除しており、AWS CLI・Claude Codeの選定・署名検証と既存のプロキシ設定は維持します。更新後は`Dev Containers: Rebuild and Reopen in Container`を実行してください。
+
+APTの一覧取得とパッケージ本体のダウンロードは、各段階で最大6回（初回1回＋再試行5回）実行します。再試行前の待機は10・20・30・40・50秒です。APT内部の`Acquire::Retries`は0とし、503・504も含めてスクリプト側で処理全体を再試行します。
+
+一覧取得は`APT::Update::Error-Mode=any`で一時的なエラーも失敗として扱います。ベースイメージの古い一覧を削除してから取得し、成功するまで次の段階へ進みません。パッケージ本体は`--download-only`で先に揃え、成功後に`--no-download`でインストールします。dpkgによるインストール自体は一度だけ実行し、失敗を再試行で隠しません。
+
+HTTP(S)の接続・受信タイムアウトは60秒です。別途、各取得処理全体を300秒で打ち切り、終了しない場合は15秒後に強制終了します。上限は取得1回に対するもので、ビルド全体やdpkgの実行時間の上限ではありません。ビルドログにはAPTの取得先、ビルド開始時刻、取得段階、UTC時刻、試行回数と終了コードを表示します。
+
+この対策は断続的な障害への再試行と、取得が完了しない場合の停止を行います。通常のDebianミラーや通信経路の障害が継続すればビルドは失敗します。管理者への共有事項とログの採取方法は[APTの障害確認手順](docs/apt-troubleshooting.md)を参照してください。Remote-SSHでビルドする場合、ビルドが参照するのはLinuxホスト側のプロキシ環境変数です。
 
 ### Podman 運用方針
 
@@ -354,7 +373,8 @@ APIキーはローカル設定ファイルから Claude Code のセッション�
 - [VS Code: Improve disk performance（Named Volume）](https://code.visualstudio.com/remote/advancedcontainers/improve-performance)
 - [Dev Containers CLI: Change Log](https://github.com/devcontainers/cli/blob/main/CHANGELOG.md)
 - [Dev Container specification: initializeCommand](https://github.com/devcontainers/spec/blob/main/docs/specs/devcontainerjson-reference.md#lifecycle-scripts)
-- [Debian Snapshot usage](https://snapshot.debian.org/)
+- [Debian公式CDNミラー](https://deb.debian.org/)
+- [APTの取得先設定・署名鍵・有効期限](https://manpages.debian.org/bookworm/apt/sources.list.5.en.html)
 - [AWS CLI installation and PGP verification](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
 - [GitHub REST API: Releases](https://docs.github.com/en/rest/releases/releases)
 - [Claude Code version management and binary integrity](https://code.claude.com/docs/en/setup)
