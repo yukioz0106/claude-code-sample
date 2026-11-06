@@ -6,8 +6,8 @@ APTの一覧・パッケージ取得でエラーが続く場合は、ビルド�
 
 | 取得先 | suite |
 | --- | --- |
-| `https://deb.debian.org/debian` | `bookworm`、`bookworm-updates` |
-| `https://deb.debian.org/debian-security` | `bookworm-security` |
+| `https://deb.debian.org/debian` | `trixie`、`trixie-updates` |
+| `https://deb.debian.org/debian-security` | `trixie-security` |
 
 APTパッケージの14日ルールを解除し、Debian Snapshotへの依存を取り除いています。AWS CLI・Claude Codeにはビルド開始時点の14日ルールを引き続き適用します。TLS証明書検証、Debianの署名検証、メタデータの有効期限チェックは有効です。Snapshot専用のPin-Priorityと`--allow-downgrades`は使用しません。
 
@@ -62,7 +62,7 @@ Linux側では、`/etc/environment`、`/etc/profile.d/`、ユーザーのシェ�
 以下はLinuxホストで実行する例です。`target_url`をビルドログで失敗した完全なURLへ置き換えます。既存のプロキシ環境変数を使い、証明書検証を有効にしたまま確認します。
 
 ```bash
-target_url=https://deb.debian.org/debian-security/dists/bookworm-security/InRelease
+target_url=https://deb.debian.org/debian-security/dists/trixie-security/InRelease
 report_directory=$(mktemp -d /tmp/debian-apt-check.XXXXXX)
 date -u '+%Y-%m-%dT%H:%M:%SZ' > "$report_directory/request-start.txt"
 
@@ -89,12 +89,12 @@ HTTPエラーではcurlも非0で終了します。保存した`headers.txt`・`
 | 社内プロキシ | 指定時刻の`CONNECT deb.debian.org:443`と実際のリダイレクト先のアクセスログ、接続エラー、切断、タイムアウト、接続制限を確認。暗号化トンネルだけを扱う場合、内部のURLやHTTPステータスがログに見えない点を考慮する |
 | TLS | CONNECTの成否、証明書の検証結果、TLS検査の有無と証明書配布方針を確認。検証無効化で回避しない |
 | CDN・上流応答 | クライアントが受け取った503・504のヘッダーと時刻を照合。`X-Cache: MISS`だけで障害箇所を断定せず、必要ならDebianの配布サービス運用側へ照会する |
-| 必要な全ファイル | `debian`のBookworm・Bookworm Updates、`debian-security`のBookworm Securityについて、署名付きメタデータ、圧縮一覧、`.deb`、リダイレクト先の取得を確認する |
+| 必要な全ファイル | `debian`のTrixie・Trixie Updates、`debian-security`のTrixie Securityについて、署名付きメタデータ、圧縮一覧、`.deb`、リダイレクト先の取得を確認する |
 | 継続的な提供方法 | 障害が続く場合、承認されたDebianミラー、署名付きメタデータと本体を保持する社内ミラー、または検証済みOCIイメージの社内配布を検討する |
 
 HTTPSのCONNECTを通すプロキシを追加するだけでは、暗号化されたパッケージ内容のキャッシュができるとは限りません。社内ミラー・イメージ配布を採用する場合は、署名検証、メタデータの有効期限、AWS CLI・Claude Codeの14日の待機期間、更新周期、使用するイメージdigestを運用として明確にします。イメージ配布は「利用者のビルドごとにツールの最新の14日経過版を選ぶ」現行運用も変更します。
 
-代替ホストは、実際のホスト・プロキシ経由で動作と利用可否を確認してから採用します。取得先ホストを変更するときは、Bookwormの3系統の提供、署名鍵、有効期限、監査記録の整合性も併せてレビューします。
+代替ホストは、実際のホスト・プロキシ経由で動作と利用可否を確認してから採用します。取得先ホストを変更するときは、Trixieの3系統の提供、署名鍵、有効期限、監査記録の整合性も併せてレビューします。
 
 ## 復旧の確認
 
@@ -108,8 +108,8 @@ python3 -m unittest discover -s .devcontainer/tests -v
 
 ## 公式資料
 
-- [APT: error-on、download-only、no-download](https://manpages.debian.org/bookworm/apt/apt-get.8.en.html)
-- [APT: HTTPのタイムアウト・プロキシ](https://manpages.debian.org/bookworm/apt/apt-transport-http.1.en.html)
+- [APT: error-on、download-only、no-download](https://manpages.debian.org/trixie/apt/apt-get.8.en.html)
+- [APT: HTTPのタイムアウト・プロキシ](https://manpages.debian.org/trixie/apt/apt-transport-http.1.en.html)
 - [Debian公式CDNミラー](https://deb.debian.org/)
-- [APTの取得先設定・署名鍵・有効期限](https://manpages.debian.org/bookworm/apt/sources.list.5.en.html)
+- [APTの取得先設定・署名鍵・有効期限](https://manpages.debian.org/trixie/apt/sources.list.5.en.html)
 - [VS Code Remote-SSH](https://code.visualstudio.com/docs/remote/ssh)

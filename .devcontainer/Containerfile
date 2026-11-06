@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/devcontainers/python:3.12-bookworm
+FROM mcr.microsoft.com/devcontainers/python:3.12-trixie
 
 # Forward proxy settings only while building. They are deliberately not
 # persisted with ENV so that host-specific values do not remain in the image.
@@ -21,7 +21,7 @@ COPY resolve_releases.py install-reviewed-tools.sh install-apt-packages.sh \
     /usr/local/lib/devcontainer/
 
 # Resolve AWS CLI and Claude Code using the build-start timestamp above;
-# install APT packages from the current official Bookworm repositories.
+# install APT packages from the current official Trixie repositories.
 # The script fails closed if release metadata or a signature cannot be verified.
 RUN chmod 0755 \
         /usr/local/lib/devcontainer/resolve_releases.py \
