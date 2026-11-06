@@ -47,9 +47,9 @@ trap cleanup EXIT HUP INT TERM
     --minimum-age-days 14 \
     --output "$temporary_directory/resolved-releases.json"
 
-printf 'APT repositories: debian-current (Bookworm; build resolution: %s)\n' "$resolution_time"
+printf 'APT repositories: debian-current (Trixie; build resolution: %s)\n' "$resolution_time"
 
-# Use only the current official Bookworm repositories. The 14-day waiting
+# Use only the current official Trixie repositories. The 14-day waiting
 # period applies to AWS CLI and Claude Code, not to APT packages.
 rm -f /etc/apt/sources.list
 for source_file in /etc/apt/sources.list.d/*; do
@@ -61,13 +61,13 @@ rm -f /etc/apt/preferences.d/devcontainer-snapshot
 cat > /etc/apt/sources.list.d/debian.sources <<'EOF'
 Types: deb
 URIs: https://deb.debian.org/debian
-Suites: bookworm bookworm-updates
+Suites: trixie trixie-updates
 Components: main
 Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
 
 Types: deb
 URIs: https://deb.debian.org/debian-security
-Suites: bookworm-security
+Suites: trixie-security
 Components: main
 Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
 EOF

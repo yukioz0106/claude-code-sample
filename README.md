@@ -14,7 +14,7 @@ Claude Code を AWS Bedrock 経由で利用するための標準リポジトリ�
 
 `aws login`はAWS CLI v2.32.0以降で利用できます。コンテナには対応するAWS CLI v2を導入し、実行時にもスクリプトでバージョンを確認します。
 
-Dev ContainerのOSはDebian 12 Bookwormです。BullseyeはEOLのため使用しません。
+Dev ContainerのOSはDebian 13 Trixieです。Pythonは従来と同じ3.12系列を使用します。
 
 Dev ContainersのPodman互換性はPodman 5以降が公式の目安です。社内標準環境で別バージョンを使う場合は、後述の構成確認が成功することを確認してください。ComposeプロバイダーとPodman APIソケットの設定は、この構成では参照されません。
 
@@ -26,7 +26,7 @@ Dev ContainersのPodman互換性はPodman 5以降が公式の目安です。社�
 2. VS Codeでリポジトリを開きます。
 3. `Dev Containers: Reopen in Container`を実行します。
 
-起動処理はビルド直前のUTC時刻を生成し、その時点で公開から14日以上経過したAWS CLI・Claude Codeを毎回選び直します。APTパッケージは、14日の待機期間を設けず、通常のDebian公式リポジトリからBookworm向けの候補版を取得します。初回ビルドと再ビルドにはGitHub、Debianの`deb.debian.org`、AWS、Anthropic、npm（構成確認用CLIを使う場合）へのネットワーク接続が必要です。ベースイメージが未取得の場合や更新する場合は、Microsoft Container Registryへの接続も必要です。
+起動処理はビルド直前のUTC時刻を生成し、その時点で公開から14日以上経過したAWS CLI・Claude Codeを毎回選び直します。APTパッケージは、14日の待機期間を設けず、通常のDebian公式リポジトリからTrixie向けの候補版を取得します。初回ビルドと再ビルドにはGitHub、Debianの`deb.debian.org`、AWS、Anthropic、npm（構成確認用CLIを使う場合）へのネットワーク接続が必要です。ベースイメージが未取得の場合や更新する場合は、Microsoft Container Registryへの接続も必要です。
 
 既存のDev Containerがある状態で`.devcontainer/Containerfile`、`.devcontainer/devcontainer.json`または依存導入スクリプトの更新を取得した場合は、`Dev Containers: Rebuild and Reopen in Container`を実行します。
 
@@ -113,6 +113,8 @@ Claude Codeの`/status`で、プロバイダーがAmazon Bedrockであること�
 クローン直後は既存コンテナがないため、`Reopen in Container`でイメージのビルドとコンテナの作成まで実行されます。
 
 以前のリポジトリ構成ですでにDev Containerを作成済みの場合や、`.devcontainer/Containerfile`または`.devcontainer/devcontainer.json`の更新を取得した場合は、古いイメージやコンテナ設定を使わないよう、`Dev Containers: Rebuild and Reopen in Container`を実行してください。特にアクセスキー方式からAWS Login方式へ移行する初回は、AWS認証情報のマウント方式が変わるため再ビルドが必要です。
+
+Debian 12 BookwormからDebian 13 Trixieへの移行も再ビルドで反映します。ベースイメージとAPTの取得先を一緒に切り替えるため、既存コンテナ内でAPTの取得先だけを変更する必要はありません。Pythonは3.12系列を維持し、AWS CLI・Claude Codeの14日ルール、署名検証、プロキシ設定、`vscode`ユーザー、`/workspace`とAWS Login用Named Volumeの設定も継続します。再ビルド後は「構成の確認」のコマンドでOSとツールを確認してください。
 
 `.claude/settings.json`または`.claude/settings.local.json`だけを変更した場合は、実行中のClaude Codeを終了して新しく起動すれば反映されます。Dev Containerの再作成は不要です。
 
@@ -299,7 +301,7 @@ ls -la /workspace
 findmnt /workspace
 ```
 
-`VERSION_ID="12"`、`VERSION_CODENAME=bookworm`、作業ディレクトリが`/workspace`となり、同ディレクトリにこのリポジトリの内容が表示されれば正常です。`/workspace`が空の場合は、まずPodman 5以降で再現するか確認し、`podman inspect <container-id>`の`Mounts`でホストのリポジトリが`/workspace`へbind mountされているか確認してください。
+`VERSION_ID="13"`、`VERSION_CODENAME=trixie`、Pythonが`3.12.x`、作業ディレクトリが`/workspace`となり、同ディレクトリにこのリポジトリの内容が表示されれば正常です。`apt-sources.sources`のsuiteは`trixie`・`trixie-updates`・`trixie-security`であることも確認します。`/workspace`が空の場合は、まずPodman 5以降で再現するか確認し、`podman inspect <container-id>`の`Mounts`でホストのリポジトリが`/workspace`へbind mountされているか確認してください。
 
 ### 依存バージョンの動的選定方針
 
@@ -312,12 +314,12 @@ Dev Container内へ明示的に導入するAPTパッケージ、AWS CLI、Claude
 
 対象ごとの判定方法は次のとおりです。
 
-- Debian APT: `https://deb.debian.org/debian`の`bookworm`・`bookworm-updates`と、`https://deb.debian.org/debian-security`の`bookworm-security`を使用します。14日の待機期間は設けず、取得した一覧に基づくAPTの通常の候補選定で、指定パッケージと必要な依存をインストールします。OS系列はBookwormのままです。ベースイメージ内の全パッケージを一括更新する処理ではありません。Debianの署名検証、TLS証明書検証、メタデータの有効期限チェックは有効にし、Snapshot用の優先度設定や強制ダウングレードは使用しません。
+- Debian APT: `https://deb.debian.org/debian`の`trixie`・`trixie-updates`と、`https://deb.debian.org/debian-security`の`trixie-security`を使用します。14日の待機期間は設けず、取得した一覧に基づくAPTの通常の候補選定で、指定パッケージと必要な依存をインストールします。OS系列はTrixieのままです。ベースイメージ内の全パッケージを一括更新する処理ではありません。Debianの署名検証、TLS証明書検証、メタデータの有効期限チェックは有効にし、Snapshot用の優先度設定や強制ダウングレードは使用しません。
 - AWS CLI v2: AWS公式リポジトリの全履歴を含むCHANGELOGから候補版を列挙し、対象アーキテクチャの公式配布ZIPに付く`Last-Modified`がカットオフ以前の中で最も新しいSemVerを選びます。ZIPはAWS CLI TeamのPGP署名を検証し、実際に署名した鍵のprimary fingerprintが公式値と一致することも確認します。
 - Claude Code: Anthropic公式GitHub Releasesを最終ページまで取得し、`published_at`がカットオフ以前で、draftでもprereleaseでもない全候補から最も新しいSemVerを選びます。Anthropicの署名済み`manifest.json`について、鍵ファイルに公式primary fingerprint以外が含まれないことと実際の署名者がその鍵であることを検証し、その中のSHA-256とファイルサイズが一致するLinuxバイナリだけを導入します。
 - Dev Containers CLI: 下記の構成確認用ラッパーはnpmの公開時刻から同じ14日ルールを満たす版を選びます。VS Code拡張機能に内蔵されたCLIは拡張機能側で管理され、コンテナへ導入する依存には含みません。
 
-`mcr.microsoft.com/devcontainers/python:3.12-bookworm`は、Python 3.12とBookwormという互換性系列だけを指定するフローティングタグです。Containerfile実行前に必要となるブートストラップイメージのため、上記リゾルバーの対象外です。
+`mcr.microsoft.com/devcontainers/python:3.12-trixie`は、Python 3.12とTrixieという互換性系列だけを指定するフローティングタグです。Containerfile実行前に必要となるブートストラップイメージのため、上記リゾルバーの対象外です。
 
 同じcommitでもビルド時点の配布状況が変われば、導入版が変わる可能性があります。監査用に次の3ファイルをイメージ内へ保存します。
 
@@ -348,7 +350,7 @@ HTTP(S)の接続・受信タイムアウトは60秒です。別途、各取得�
 - `label=disable` により、SELinuxが有効なホストでもワークスペースのbind mountを利用できます。一方で、このコンテナに対するSELinuxのラベル分離は無効になるため、信頼できるリポジトリだけを開き、追加の機密ディレクトリを安易にマウントしないでください。AWS Loginの設定とキャッシュには、ホストのディレクトリではなくPodman Named Volumeを使用します。
 - Dev ContainersからPodmanのbuild/create/start/execを直接使用し、ComposeとPodman APIソケットは使用しません。
 - ビルド定義はOCI互換の `.devcontainer/Containerfile` です。
-- 外部のベースイメージは`mcr.microsoft.com/...`の完全修飾名とBookwormのフローティングタグを使用します。
+- 外部のベースイメージは`mcr.microsoft.com/...`の完全修飾名とTrixieのフローティングタグを使用します。
 - ワークスペースは `/workspace`、実行ユーザーは `vscode` です。
 - `dev.containers.dockerPath` と `devcontainer.json` の `build.dockerfile` はDev Containers仕様上の互換名です。実際のコマンドはPodman、実際のファイル名は `Containerfile` です。
 
@@ -374,7 +376,7 @@ APIキーはローカル設定ファイルから Claude Code のセッション�
 - [Dev Containers CLI: Change Log](https://github.com/devcontainers/cli/blob/main/CHANGELOG.md)
 - [Dev Container specification: initializeCommand](https://github.com/devcontainers/spec/blob/main/docs/specs/devcontainerjson-reference.md#lifecycle-scripts)
 - [Debian公式CDNミラー](https://deb.debian.org/)
-- [APTの取得先設定・署名鍵・有効期限](https://manpages.debian.org/bookworm/apt/sources.list.5.en.html)
+- [APTの取得先設定・署名鍵・有効期限](https://manpages.debian.org/trixie/apt/sources.list.5.en.html)
 - [AWS CLI installation and PGP verification](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
 - [GitHub REST API: Releases](https://docs.github.com/en/rest/releases/releases)
 - [Claude Code version management and binary integrity](https://code.claude.com/docs/en/setup)
