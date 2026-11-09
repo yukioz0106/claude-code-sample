@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF 改ざん検知 v7</title>
+<!-- pako: zlib decompress (FlateDecode) -->
+<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", "Hiragino Sans", sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    min-height: 100vh;
+    padding: 2rem;
+  }
+  h1 { text-align: center; font-size: 1.8rem; margin-bottom: 0.4rem; color: #7dd3fc; letter-spacing: 0.05em; }
+  .subtitle { text-align: center; color: #94a3b8; font-size: 0.85rem; margin-bottom: 2rem; }
+  #dropzone {
+    border: 2px dashed #334155; border-radius: 1rem; padding: 3rem 2rem;
+    text-align: center; cursor: pointer; transition: border-color .2s, background .2s;
+    background: #1e293b; max-width: 700px; margin: 0 auto 2rem;
+  }
+  #dropzone.drag-over { border-color: #38bdf8; background: #0f3e5c; }
+  #dropzone .icon { font-size: 3rem; margin-bottom: 0.6rem; }
+  #dropzone p { color: #94a3b8; font-size: 0.95rem; }
+  #dropzone .hint { font-size: 0.78rem; color: #475569; margin-top: 0.5rem; }
+  #file-input, #folder-input { display: none; }
+  #file-list { max-width: 700px; margin: 0 auto 1.5rem; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .file-chip {
+    background: #1e3a5f; border-radius: 9999px; padding: 0.25rem 0.75rem;
+    font-size: 0.78rem; color: #bae6fd; display: flex; align-items: center; gap: 0.4rem;
+  }
+  /* フォルダチップは緑系で区別 */
+  .file-chip.folder-chip {
+    background: #064e3b; color: #6ee7b7;
+    border-radius: 0.5rem; /* 少し角張らせてフォルダ感を出す */
+  }
+  .file-chip .remove { cursor: pointer; color: #64748b; font-weight: bold; font-size: 1rem; line-height: 1; }
+  .file-chip .remove:hover { color: #f87171; }
+  .actions { display: flex; justify-content: center; gap: 0.75rem; max-width: 800px; margin: 0 auto 2rem; flex-wrap: wrap; }
+  button { padding: 0.6rem 1.4rem; border: none; border-radius: 0.5rem; font-size: 0.95rem; cursor: pointer; font-weight: 600; transition: opacity .2s; }
+  button:hover { opacity: 0.85; }
+  #btn-scan     { background: #0284c7; color: #fff; }
+  #btn-clear    { background: #334155; color: #cbd5e1; }
+  #btn-folder   { background: #065f46; color: #a7f3d0; }
+  #btn-download { background: #1e3a5f; color: #7dd3fc; display: none; }
+  #progress-bar-wrap { max-width: 700px; margin: 0 auto 1.5rem; display: none; }
+  #progress-bar-bg { background: #1e293b; border-radius: 9999px; height: 8px; overflow: hidden; }
+  #progress-bar { height: 100%; background: #38bdf8; width: 0%; transition: width .3s; }
+  #progress-text { text-align: center; font-size: 0.8rem; color: #64748b; margin-top: 0.4rem; }
+  #results-wrap { max-width: 100%; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  thead th {
+    background: #1e3a5f; color: #7dd3fc; padding: 0.6rem 0.8rem;
+    text-align: left; white-space: nowrap; position: sticky; top: 0;
+  }
+  tbody tr:nth-child(even) { background: #131f2e; }
+  tbody tr:nth-child(odd) { background: #0f172a; }
+  tbody tr:hover { background: #1e293b; }
+  td { padding: 0.5rem 0.8rem; border-bottom: 1px solid #1e293b; vertical-align: middle; word-break: break-all; }
+  .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
+  .badge-ok   { background: #064e3b; color: #6ee7b7; }
+  .badge-warn { background: #451a03; color: #fcd34d; }
+  .badge-ng   { background: #450a0a; color: #fca5a5; }
+  #error-msg { color: #f87171; text-align: center; margin-bottom: 1rem; font-size: 0.88rem; display: none; }
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #334155; border-top-color: #38bdf8; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 0.4rem; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── カラム説明ツールチップ ── */
+  .col-tip {
+    display: inline-block; width: 14px; height: 14px; border-radius: 50%;
+    background: #334155; color: #94a3b8; font-size: 0.62rem; text-align: center;
+    line-height: 14px; cursor: help; position: relative; margin-left: 4px;
+    vertical-align: middle; font-weight: normal;
+  }
+  .col-tip::after {
+    content: attr(data-tip); position: absolute; top: 130%; left: 50%;
+    transform: translateX(-50%); background: #fef08a; border: 1px solid #ca8a04;
+    color: #1a1a00; font-size: 0.72rem; padding: 0.5rem 0.7rem; border-radius: 0.45rem;
+    white-space: pre-wrap; width: 230px; z-index: 200; display: none;
+    font-weight: normal; text-align: left; line-height: 1.5; pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }
+  .col-tip:hover::after { display: block; }
+
+  /* ── 解説モーダル ── */
+  #modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.75); z-index: 1000;
+    overflow-y: auto; padding: 2rem 1rem;
+  }
+  #modal-overlay.open { display: block; }
+  #modal-box {
+    background: #1e293b; border: 1px solid #334155;
+    border-radius: 1rem; max-width: 820px; margin: 0 auto;
+    padding: 2rem 2.5rem; position: relative;
+  }
+  #modal-close {
+    position: absolute; top: 1rem; right: 1.2rem;
+    background: none; border: none; color: #64748b;
+    font-size: 1.6rem; cursor: pointer; line-height: 1; padding: 0;
+  }
+  #modal-close:hover { color: #f87171; opacity: 1; }
+  #modal-box h2 { color: #7dd3fc; font-size: 1.3rem; margin-bottom: 1.5rem; padding-bottom: 0.6rem; border-bottom: 1px solid #334155; }
+  #modal-box h3 { color: #38bdf8; font-size: 1rem; margin: 1.6rem 0 0.6rem; }
+  #modal-box h4 { color: #a5f3fc; font-size: 0.88rem; margin: 1rem 0 0.4rem; }
+  #modal-box p  { color: #cbd5e1; font-size: 0.88rem; line-height: 1.75; margin-bottom: 0.6rem; }
+  #modal-box ul { color: #cbd5e1; font-size: 0.88rem; line-height: 1.75; padding-left: 1.4rem; margin-bottom: 0.6rem; }
+  #modal-box li { margin-bottom: 0.2rem; }
+  #modal-box pre {
+    background: #0f172a; border: 1px solid #334155; border-radius: 0.5rem;
+    padding: 0.8rem 1rem; font-size: 0.78rem; color: #94a3b8;
+    overflow-x: auto; margin: 0.5rem 0 0.8rem; line-height: 1.6;
+  }
+  #modal-box .sec { margin-bottom: 0.4rem; padding: 1rem 1.2rem; background: #0f172a; border-left: 3px solid #0284c7; border-radius: 0 0.4rem 0.4rem 0; }
+  #modal-box .sec-warn { border-left-color: #d97706; }
+  #modal-box .sec-ok   { border-left-color: #059669; }
+  #modal-box table { width: 100%; font-size: 0.82rem; margin: 0.5rem 0 0.8rem; }
+  #modal-box table th { background: #1e3a5f; color: #7dd3fc; padding: 0.4rem 0.7rem; text-align: left; }
+  #modal-box table td { padding: 0.4rem 0.7rem; border-bottom: 1px solid #1e293b; color: #cbd5e1; }
+  #modal-box table tr:nth-child(even) td { background: #131f2e; }
+  .flow-box {
+    background: #0f172a; border: 1px solid #334155; border-radius: 0.5rem;
+    padding: 0.8rem 1rem; font-size: 0.8rem; color: #94a3b8;
+    line-height: 1.8; margin: 0.5rem 0 0.8rem;
+  }
+  .flow-box .flow-ok   { color: #6ee7b7; }
+  .flow-box .flow-warn { color: #fcd34d; }
+  .flow-box .flow-ng   { color: #fca5a5; }
+  #btn-explain { background: #4f46e5; color: #e0e7ff; }
+</style>
+</head>
+<body>
+<h1>&#128272; PDF 改ざん検知 <small style="font-size:0.6em;color:#475569">v7</small></h1>
+<p class="subtitle">
+  ファイル個別選択（最大100件）またはフォルダ一括選択でPDFを解析 &mdash; ドラッグ&amp;ドロップも対応<br>
+  <span style="color:#64748b;font-size:0.78em">&#9432; 印刷→再PDF化（中以上）は改ざんありと判定します。手動画像貼り付けの「位置ズレ」も検知します。</span>
+</p>
+
+<!-- inputはdropzoneの外に置く（クリックイベントのバブリング防止） -->
+<input type="file" id="file-input" multiple accept=".pdf,application/pdf" style="display:none">
+<input type="file" id="folder-input" webkitdirectory multiple style="display:none">
+
+<div id="dropzone">
+  <div class="icon">&#128196;</div>
+  <p>PDFファイルをここにドロップ</p>
+  <p>または<strong style="color:#38bdf8">クリックして個別選択</strong></p>
+  <p class="hint">個別選択: 最大100ファイル / フォルダ選択: 制限なし（サブフォルダ含む）</p>
+</div>
+
+<div id="file-list"></div>
+<div id="error-msg"></div>
+
+<div class="actions">
+  <button id="btn-clear">クリア</button>
+  <button id="btn-folder">&#128193; フォルダを選択</button>
+  <button id="btn-scan">&#128269; スキャン</button>
+  <button id="btn-download">&#11123; CSV ダウンロード</button>
+  <button id="btn-explain">&#128214; 改ざん検知ロジック解説</button>
+</div>
+
+<!-- ── 解説モーダル ── -->
+<div id="modal-overlay">
+  <div id="modal-box">
+    <button id="modal-close" title="閉じる">&times;</button>
+    <h2>&#128214; 改ざん検知ロジック解説</h2>
+
+    <!-- PDF構造 -->
+    <h3>&#9312; まず「PDFの構造」を知ろう</h3>
+    <p>PDFファイルは実はテキストベースのデータで、4つのパーツで成り立っています。</p>
+    <pre>%PDF-1.7            ← ヘッダー（「私はPDFです」という宣言）
+
+1 0 obj             ← オブジェクト（文章・画像・フォントなどの部品）
+  &lt;&lt; /Type /Page &gt;&gt;
+endobj
+
+xref                ← 相互参照テーブル（「部品がどこにあるか」の目次）
+  0000000009 0000
+
+trailer             ← トレイラー（「目次はここです」という案内）
+  &lt;&lt; /Size 5 &gt;&gt;
+
+startxref           ← 目次の場所（バイト位置）
+  123
+%%EOF               ← ファイルの終わり</pre>
+
+    <!-- xref -->
+    <h3>&#9313; チェック① xref（相互参照テーブル）</h3>
+    <div class="sec">
+      <p><strong>何をチェックしているか</strong><br>
+      「目次（xref）と本文の対応が正しいか」を確認します。</p>
+      <pre>startxref
+  12345   ← 「12345バイト目にxrefがある」と書いてある</pre>
+      <p>ここで指定されたバイト位置に実際に <code>xref</code> がなければ異常です。</p>
+      <p><strong>なぜ改ざん検知になるか</strong><br>
+      改ざんするとファイルの長さが変わります。するとバイト位置（12345）がずれて、指定位置に <code>xref</code> が見つからなくなります。目次ページを破り取って別のページを差し込んだようなイメージです。</p>
+    </div>
+
+    <!-- trailer -->
+    <h3>&#9314; チェック② trailer（トレイラー辞書）</h3>
+    <div class="sec">
+      <p><strong>何をチェックしているか</strong><br>
+      ファイル末尾の「案内板」が存在するかを確認します。</p>
+      <pre>trailer
+&lt;&lt;
+  /Size 10        ← オブジェクトは全部で10個
+  /Root 1 0 R     ← 文書の起点は「1番オブジェクト」
+&gt;&gt;</pre>
+      <p><strong>なぜ改ざん検知になるか</strong><br>
+      trailerがない・壊れているということは、ファイルの末尾が切り取られたか、別のファイルと無理やり結合された可能性があります。</p>
+    </div>
+
+    <!-- stream -->
+    <h3>&#9315; チェック③ stream（ストリームオブジェクト）</h3>
+    <div class="sec">
+      <p>画像・フォント・ページ内容などのバイナリデータ（ストリーム）が壊れていないかを2段階で確認します。</p>
+      <h4>ステップ1：長さの確認</h4>
+      <pre>&lt;&lt; /Length 500 &gt;&gt;    ← 「このデータは500バイト」と宣言
+stream
+...（実際のデータ）...
+endstream</pre>
+      <p>宣言値500と実際のバイト数が2バイト以上ずれていたら異常です。データを途中で書き換えると長さが変わります。</p>
+      <p>ただし <code>/Length</code> が間接参照（例: <code>/Length 29 0 R</code>）で記述されている場合は、スキャナー生成PDFで一般的な記述形式のためチェックをスキップします。</p>
+      <h4>ステップ2：圧縮データの展開確認</h4>
+      <p>PDFのデータはほとんど「FlateDecode（zlib圧縮）」で圧縮されています。正規のPDFなら必ず展開できます。<strong>展開に失敗する = データが破損・改ざんされています。</strong></p>
+    </div>
+
+    <!-- 構造 -->
+    <h3>&#9316; チェック④ PDF構造チェック</h3>
+    <div class="sec">
+      <h4>4-1. ヘッダー確認</h4>
+      <p>ファイルの先頭が <code>%PDF-</code> で始まるかチェックします。これがなければPDFとして無効です。</p>
+      <h4>4-2. EOFマーカー確認</h4>
+      <p>ファイル末尾1024バイトに <code>%%EOF</code> があるかチェックします。正常なPDFは必ずこれで終わります。</p>
+      <h4>4-3. オブジェクト番号の重複チェック</h4>
+      <pre>1 0 obj ... endobj   ← 1番オブジェクト
+2 0 obj ... endobj   ← 2番オブジェクト
+1 0 obj ... endobj   ← また1番？→ 異常！</pre>
+      <p>同じ番号が2回出てくる場合、元のオブジェクトの上に偽のオブジェクトが追加された疑いがあります。</p>
+    </div>
+
+    <!-- 増分更新 -->
+    <h3>&#9317; チェック⑤ 増分更新（インクリメンタルアップデート）</h3>
+    <div class="sec sec-warn">
+      <p><strong>PDFの「追記」機能とは</strong><br>
+      PDFには、元のデータを消さずに末尾に差分を追記できる仕様があります。電子署名でよく使われます。</p>
+      <pre>（元のPDF）
+%%EOF        ← 1つ目の終端
+
+（追記されたデータ）
+%%EOF        ← 2つ目の終端</pre>
+      <p><strong>なぜ危ないのか</strong><br>
+      <code>%%EOF</code> が2個以上あれば増分更新です。正規の用途（電子署名）もありますが、<strong>署名済みPDFに後から内容を追記する</strong>という改ざん手口にも使われます。そのため「疑い」として警告します。</p>
+    </div>
+
+    <!-- 印刷再PDF化 -->
+    <h3>&#9318; チェック⑥ 印刷→再PDF化の検知</h3>
+    <div class="sec sec-warn">
+      <p><strong>どんな改ざん手口か</strong></p>
+      <pre>元のPDF → 印刷 → スキャン or スクリーンショット → 新しいPDFとして保存</pre>
+      <p>こうすると文字データが画像に変わり、内容を自由に差し替えやすくなります。</p>
+      <p><strong>何を手がかりにするか（6つのスコア指標）</strong></p>
+      <table>
+        <tr><th>指標</th><th>内容</th></tr>
+        <tr><td>Producer/Creator</td><td>Microsoft Print to PDF など印刷系ソフト名が記録されていないか</td></tr>
+        <tr><td>大きなCTM変換行列</td><td>ページ全体を覆うサイズの画像配置命令があるか</td></tr>
+        <tr><td>テキスト演算子なし</td><td>文字を描く命令（Tj/TJ/Tf/BT）が一切なく画像命令（Do）だけか</td></tr>
+        <tr><td>白矩形＋画像</td><td>白い四角で元テキストを隠して画像を上に重ねるパターンがあるか</td></tr>
+        <tr><td>フォントなし</td><td>フォントデータが存在せず画像だけか</td></tr>
+        <tr><td>XObjectが画像のみ</td><td>埋め込みオブジェクトがすべて画像種別か</td></tr>
+      </table>
+      <p>スコア判定と改ざん判定への影響：</p>
+      <table>
+        <tr><th>疑い度</th><th>スコア</th><th>改ざん判定</th><th>理由</th></tr>
+        <tr><td>高（スキャナー）</td><td>7以上</td><td>なし（正常）</td><td>複合機スキャン等の正常運用とみなす</td></tr>
+        <tr><td>中</td><td>4〜6</td><td><strong>あり</strong></td><td>印刷・再PDF化による内容差し替えの疑いが高い</td></tr>
+        <tr><td>低</td><td>2〜3</td><td>疑い</td><td>再PDF化の可能性あり</td></tr>
+        <tr><td>なし</td><td>0〜1</td><td>影響なし</td><td>—</td></tr>
+      </table>
+    </div>
+
+    <!-- 画像ズレ -->
+    <h3>&#9319; チェック⑦ 画像ズレ検知（手動貼り付けの検出）</h3>
+    <div class="sec sec-warn">
+      <p><strong>どんな改ざん手口か</strong><br>
+      AcrobatなどのPDF編集ソフトで、<strong>特定の文字や数値の上に画像を貼り付けて隠す</strong>手口です。たとえば金額「1,000円」の上に「10,000円」と書かれた画像を貼る。</p>
+      <h4>PDFの画像配置の仕組み（CTM変換行列）</h4>
+      <pre>[a  b  0]
+[c  d  0]  → a=幅, d=高さ, e=X座標, f=Y座標, b/c=傾き
+[e  f  1]</pre>
+      <h4>4つの検出指標</h4>
+      <p><strong>指標1：非整数座標</strong><br>
+      正規のPDFは画像をキリのよい座標に配置します。手動で貼り付けると <code>x=12.37pt, y=307.82pt</code> のような中途半端な値になりやすいです。小数部分が0.5ptを超えていたら怪しいと判断します。</p>
+      <p><strong>指標2：微小な傾き</strong><br>
+      マウスで貼り付けると画像がわずかに傾くことがあります。CTM行列のb/c成分が0でない場合（0.01〜20の範囲）に傾きありと検出します。</p>
+      <p><strong>指標3：隣接画像間の隙間・重複</strong><br>
+      元のページを複数の画像に分割して貼り直した場合、画像の境界に隙間や重複が生じます。1.5ptを超える隙間または重複を検出します。</p>
+      <p><strong>指標4：ページ枠からのズレ</strong><br>
+      正規のPDFは画像がページ端にぴったり合います。1〜30ptの微妙なズレは手動配置を疑わせます。</p>
+      <p>スコア判定：</p>
+      <table>
+        <tr><th>疑い度</th><th>スコア</th><th>改ざん判定への影響</th></tr>
+        <tr><td>高</td><td>6以上</td><td>疑い（印刷再PDF化「なし」の場合）</td></tr>
+        <tr><td>中</td><td>3〜5</td><td>疑い（印刷再PDF化「なし」の場合）</td></tr>
+        <tr><td>低</td><td>1〜2</td><td>注意（印刷再PDF化「なし」の場合）</td></tr>
+        <tr><td>なし</td><td>0</td><td>影響なし</td></tr>
+      </table>
+      <p>なお、印刷再PDF化「高」（複合機スキャン扱い）と判定された場合は、スキャナー誤差とみなして画像ズレ判定は改ざん判定から除外されます。</p>
+    </div>
+
+    <!-- 総合判定 -->
+    <h3>&#9320; 総合判定のロジック</h3>
+    <p>各チェック結果を以下の優先順位で組み合わせます。</p>
+    <div class="flow-box">
+      <span class="flow-ng">● xref・trailer・stream・構造 のどれかNG</span><br>
+      &nbsp;&nbsp;→ <span class="flow-ng">「異常検出」（改ざん: あり）</span><br>
+      <br>
+      <span class="flow-warn">● 増分更新（%%EOFが複数）</span><br>
+      &nbsp;&nbsp;→ <span class="flow-warn">「警告: インクリメンタルアップデート検出」（改ざん: 疑い）</span><br>
+      <br>
+      <span class="flow-ng">● 印刷再PDF化 「中」</span><br>
+      &nbsp;&nbsp;→ <span class="flow-ng">「異常検出: 印刷→再PDF化の疑い（確度=中）」（改ざん: あり）</span><br>
+      <br>
+      <span class="flow-warn">● 印刷再PDF化 「低」</span><br>
+      &nbsp;&nbsp;→ <span class="flow-warn">「警告: 印刷→再PDF化の可能性（確度=低）」（改ざん: 疑い）</span><br>
+      <br>
+      <span class="flow-warn">● 印刷再PDF化「なし」かつ 画像ズレ 高 or 中</span><br>
+      &nbsp;&nbsp;→ <span class="flow-warn">「警告: 手動画像貼り付けの疑い」（改ざん: 疑い）</span><br>
+      <br>
+      <span class="flow-warn">● 印刷再PDF化「なし」かつ 画像ズレ 低</span><br>
+      &nbsp;&nbsp;→ <span class="flow-warn">「注意: 手動画像貼り付けの可能性（低）」（改ざん: 注意）</span><br>
+      <br>
+      <span class="flow-ok">● 全て問題なし（または印刷再PDF化「高」＝複合機スキャンのみ）</span><br>
+      &nbsp;&nbsp;→ <span class="flow-ok">「正常」（改ざん: なし）</span><br>
+      <br>
+      <span style="color:#94a3b8;font-size:0.9em">※ 印刷再PDF化「高」（スコア7以上）は複合機スキャン等の正常運用とみなし、画像ズレもスキャナー誤差として改ざん判定から除外します。</span>
+    </div>
+
+    <!-- SHA-256 -->
+    <h3>&#9321; SHA-256ハッシュについて</h3>
+    <div class="sec sec-ok">
+      <p>SHA-256は改ざん検知には使わず、<strong>証拠保全のための記録</strong>です。ファイルの全バイトを計算式に通すと64文字の「指紋」が得られます。<strong>1バイトでも変わると全く異なる値になる</strong>ため、後から「このハッシュ値のPDFは確かに改ざんされていない」という証跡として利用できます。</p>
+      <pre>元ファイル  → a3f8c2d1e4b79f31...
+改ざん後    → 9e1k5p2q8m3x7r2... ← 全然違う値</pre>
+      <p>表示は先頭16桁のみですが、CSVには64桁全て記録されます。</p>
+    </div>
+
+  </div>
+</div>
+
+<div id="progress-bar-wrap">
+  <div id="progress-bar-bg"><div id="progress-bar"></div></div>
+  <div id="progress-text"></div>
+</div>
+
+<div id="results-wrap">
+  <table id="result-table" style="display:none">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>ファイル名</th>
+        <th>サイズ</th>
+        <th>改ざん判定</th>
+        <th>ステータス</th>
+        <th>xref<span class="col-tip" data-tip="【xref（相互参照テーブル）】&#10;PDF内の全オブジェクトの位置情報（バイトオフセット）を管理するテーブル。&#10;startxrefが指すアドレスに実際のxrefが存在しない場合、オブジェクトが差し替えられた可能性があります。">?</span></th>
+        <th>trailer<span class="col-tip" data-tip="【trailer（トレイラー辞書）】&#10;PDFの末尾に置かれ、xrefの位置・オブジェクト数・暗号化情報などを記述する辞書。&#10;trailerが欠落または不正な場合、ファイル末尾が切り取られたか再構築された疑いがあります。">?</span></th>
+        <th>stream<span class="col-tip" data-tip="【stream（ストリームオブジェクト）】&#10;画像・フォント・コンテンツなどのバイナリデータを格納する部分。&#10;宣言された Length と実際のデータ長の不一致、またはFlateDecode展開失敗は、内容が改変されたことを示します。">?</span></th>
+        <th>構造<span class="col-tip" data-tip="【PDF構造】&#10;PDFヘッダー（%PDF-）の有無、EOFマーカーの存在、オブジェクト番号の重複などを検査します。&#10;基本構造に異常があると、ファイルが再組み立てされた可能性があります。">?</span></th>
+        <th>増分更新<span class="col-tip" data-tip="【増分更新（Incremental Update）】&#10;PDFは既存データを消さずに末尾に差分を追記できる仕様（増分更新）を持ちます。&#10;複数の%%EOFマーカーはこの追記を示し、署名後の内容変更など改ざんの手口に使われることがあります。">?</span></th>
+        <th>印刷再PDF化<span class="col-tip" data-tip="【印刷→再PDF化】&#10;印刷ソフト（Adobe PDF・Microsoft Print to PDF等）でPDF化したかを判定します。&#10;Producer/Creatorメタデータや全面画像配置から検出。&#10;・高（スコア7以上）→ 複合機スキャン扱い: 正常&#10;・中（スコア4〜6）→ 改ざんあり&#10;・低（スコア2〜3）→ 改ざん疑い">?</span></th>
+        <th>画像ズレ検知<span class="col-tip" data-tip="【手動画像貼り付けの位置ズレ検知】&#10;部分的に貼り付けられた画像の異常を検出します。&#10;・非整数座標（小数オフセット &gt; 0.5pt）&#10;・微小な傾き（CTMのb/c成分が非ゼロ）&#10;・隣接画像間の隙間・重複&#10;・画像端とページ枠のズレ（1〜30pt）">?</span></th>
+        <th>問題詳細</th>
+        <th>SHA-256 (先頭16桁)<span class="col-tip" data-tip="【SHA-256ハッシュ】&#10;ファイル全体のバイト列から計算した256ビットのフィンガープリント。&#10;1バイトでも内容が変わると全く異なる値になるため、「このハッシュ値のファイルは改変されていない」という証跡として利用できます。&#10;表示は先頭16桁（参考値）。">?</span></th>
+      </tr>
+    </thead>
+    <tbody id="result-tbody"></tbody>
+  </table>
+</div>
+
+<script>
+// ============================================================
+// PDF解析ユーティリティ
+// ============================================================
+
+function countOccurrences(data, pattern) {
+  let count = 0, pos = 0;
+  while (true) {
+    const idx = indexOfBytes(data, pattern, pos);
+    if (idx === -1) break;
+    count++;
+    pos = idx + 1;
+  }
+  return count;
+}
+
+function indexOfBytes(data, pattern, fromIndex = 0) {
+  if (pattern.length === 0) return fromIndex;
+  outer: for (let i = fromIndex; i <= data.length - pattern.length; i++) {
+    for (let j = 0; j < pattern.length; j++) {
+      if (data[i + j] !== pattern[j]) continue outer;
+    }
+    return i;
+  }
+  return -1;
+}
+
+function bytesToStr(data, from = 0, to) {
+  const slice = to !== undefined ? data.slice(from, to) : data.slice(from);
+  return new TextDecoder('latin1').decode(slice);
+}
+
+function strToBytes(str) {
+  const arr = new Uint8Array(str.length);
+  for (let i = 0; i < str.length; i++) arr[i] = str.charCodeAt(i) & 0xff;
+  return arr;
+}
+
+function flateDecode(raw) {
+  try { return pako.inflate(raw); }
+  catch(e) {
+    try { return pako.inflateRaw(raw); }
+    catch(e2) { return null; }
+  }
+}
+
+function extractMetadataValue(str, key) {
+  const re = new RegExp('/' + key + '\\s*(\\((?:[^()\\\\]|\\\\.)*\\)|<[0-9A-Fa-f\\s]*>)');
+  const m = re.exec(str);
+  if (!m) return '';
+  const raw = m[1].trim();
+  if (raw.startsWith('(') && raw.endsWith(')')) return raw.slice(1, -1);
+  if (raw.startsWith('<') && raw.endsWith('>')) {
+    try {
+      const hex = raw.slice(1, -1).replace(/\s/g, '');
+      let result = '';
+      for (let i = 0; i < hex.length; i += 2) result += String.fromCharCode(parseInt(hex.slice(i, i+2), 16));
+      return result;
+    } catch(e) { return raw; }
+  }
+  return raw;
+}
+
+function decompressStreams(str, data) {
+  let expanded = str;
+  const re = /(?<!end)stream\r?\n/g;
+  let m;
+  while ((m = re.exec(str)) !== null) {
+    const streamStart = m.index + m[0].length;
+    const endPos = str.indexOf('endstream', streamStart);
+    if (endPos === -1) continue;
+    const dictPart = str.slice(Math.max(0, m.index - 512), m.index);
+    if (!dictPart.includes('/FlateDecode') && !dictPart.includes('/Fl ')) continue;
+    const rawSlice = data.slice(streamStart, endPos);
+    let end = rawSlice.length;
+    while (end > 0 && (rawSlice[end-1] === 13 || rawSlice[end-1] === 10)) end--;
+    const raw = rawSlice.slice(0, end);
+    const decompressed = flateDecode(raw);
+    if (decompressed) expanded += '\n' + new TextDecoder('latin1').decode(decompressed);
+  }
+  return expanded;
+}
+
+async function sha256hex(data) {
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ============================================================
+// 1. read_pdf_bytes
+// ============================================================
+function readPdfBytes(data) {
+  const result = { xref_ok: true, trailer_ok: true, stream_ok: true, structure_ok: true, incremental_update: false, issues: [] };
+  const str = bytesToStr(data);
+
+  if (!str.startsWith('%PDF-')) { result.structure_ok = false; result.issues.push('PDFヘッダーが不正'); }
+
+  const tail = str.slice(Math.max(0, str.length - 1024));
+  if (!tail.includes('%%EOF')) { result.structure_ok = false; result.issues.push('EOFマーカーが見つからない'); }
+
+  const eofCount = countOccurrences(data, strToBytes('%%EOF'));
+  if (eofCount > 1) {
+    result.incremental_update = true;
+    result.issues.push(`複数のEOFマーカー検出 (${eofCount}個) - インクリメンタルアップデートの可能性`);
+  }
+
+  const hasXref = str.includes('xref');
+  const hasStartXref = str.includes('startxref');
+  if (!hasXref && !hasStartXref) {
+    result.xref_ok = false; result.issues.push('xrefテーブルが見つからない');
+  } else {
+    const sxRe = /startxref\s+(\d+)/g;
+    let sxm;
+    while ((sxm = sxRe.exec(str)) !== null) {
+      const offset = parseInt(sxm[1]);
+      if (offset >= data.length) {
+        result.xref_ok = false;
+        result.issues.push(`startxrefのオフセット(${offset})がファイルサイズ(${data.length})を超過`);
+      } else {
+        const chunk = str.slice(offset, offset + 20);
+        if (!chunk.startsWith('xref') && !/^\d+\s+\d+\s+obj/.test(chunk)) {
+          result.xref_ok = false; result.issues.push('startxrefが指すオフセットにxrefオブジェクトが存在しない');
+        }
+      }
+    }
+  }
+
+  const hasTrailer = /trailer\s*<</.test(str);
+  const hasXRefStm = str.includes('/XRefStm') || str.includes('/Type /XRef');
+  if (!hasTrailer && !hasXRefStm && hasXref) { result.trailer_ok = false; result.issues.push('trailerディクショナリが見つからない'); }
+
+  const streamRe = /(?<!end)stream\r?\n/g;
+  let sm;
+  while ((sm = streamRe.exec(str)) !== null) {
+    const streamStart = sm.index + sm[0].length;
+    const endstreamPos = str.indexOf('endstream', streamStart);
+    if (endstreamPos === -1) { result.stream_ok = false; result.issues.push('endstreamマーカーが見つからないストリームが存在する'); break; }
+    const objStart = str.lastIndexOf('<<', sm.index);
+    if (objStart !== -1) {
+      const dictBytes = str.slice(objStart, sm.index);
+      // /Length が間接参照 (例: /Length 29 0 R) の場合はスキップ
+      // スキャナー生成PDFでは間接参照が一般的な正常な記述のため
+      if (!/\/Length\s+\d+\s+\d+\s+R/.test(dictBytes)) {
+        const lenM = /\/Length\s+(\d+)/.exec(dictBytes);
+        if (lenM) {
+          const declaredLength = parseInt(lenM[1]), actualLength = endstreamPos - streamStart;
+          if (Math.abs(declaredLength - actualLength) > 2) {
+            result.stream_ok = false;
+            result.issues.push(`ストリームの長さ不一致: 宣言値=${declaredLength}, 実際=${actualLength}`);
+          }
+        }
+      }
+    }
+    const dictPart = str.slice(Math.max(0, sm.index - 512), sm.index);
+    if (dictPart.includes('/FlateDecode') || dictPart.includes('/Fl ')) {
+      let end = endstreamPos;
+      while (end > streamStart && (data[end-1] === 13 || data[end-1] === 10)) end--;
+      if (flateDecode(data.slice(streamStart, end)) === null) {
+        result.stream_ok = false; result.issues.push('FlateDecode圧縮ストリームの展開に失敗 (データ破損の可能性)');
+      }
+    }
+  }
+
+  const objRe = /(\d+)\s+\d+\s+obj\b/g;
+  const objNums = []; let om;
+  while ((om = objRe.exec(str)) !== null) objNums.push(parseInt(om[1]));
+  if (objNums.length !== new Set(objNums).size) {
+    const counts = {};
+    objNums.forEach(n => counts[n] = (counts[n] || 0) + 1);
+    const dupes = Object.keys(counts).filter(k => counts[k] > 1).slice(0, 5);
+    result.structure_ok = false; result.issues.push(`重複オブジェクト番号: ${dupes.join(', ')}`);
+  }
+  return result;
+}
+
+// ============================================================
+// 2. detect_print_repdf
+// ============================================================
+const PRINT_PRODUCERS = [
+  'Microsoft Print to PDF','Adobe PDF','Acrobat Distiller','Mac OS X',
+  'Quartz PDFContext','cairo','Ghostscript','CutePDF','doPDF','PDFCreator',
+  'PrimoPDF','Win2PDF','PDF24','Foxit','NovaPDF','BullZip','PDF-XChange',
+  'FreePDF','PDFlite','Nitro PDF','Chromium','Chrome','Puppeteer',
+  'wkhtmltopdf','LibreOffice','OpenOffice'
+];
+
+function detectPrintRepdf(data) {
+  const issues = []; let score = 0;
+  const str = bytesToStr(data);
+  const producer = extractMetadataValue(str, 'Producer');
+  const creator  = extractMetadataValue(str, 'Creator');
+  for (const kw of PRINT_PRODUCERS) {
+    if (producer.toLowerCase().includes(kw.toLowerCase()) || creator.toLowerCase().includes(kw.toLowerCase())) {
+      issues.push(`印刷/変換ツール検出: Producer=${JSON.stringify(producer)}, Creator=${JSON.stringify(creator)}`);
+      score += 3; break;
+    }
+  }
+  const content = decompressStreams(str, data);
+  let largeImageCm = false;
+  const cmRe = /([\d.+-]+)\s+([\d.+-]+)\s+([\d.+-]+)\s+([\d.+-]+)\s+([\d.+-]+)\s+([\d.+-]+)\s+cm/g;
+  let cmm;
+  while ((cmm = cmRe.exec(content)) !== null) {
+    const a = parseFloat(cmm[1]), b = parseFloat(cmm[2]), c = parseFloat(cmm[3]), d = parseFloat(cmm[4]);
+    if (Math.abs(a) >= 400 && Math.abs(d) >= 400 && Math.abs(b) < 1 && Math.abs(c) < 1) { largeImageCm = true; break; }
+  }
+  if (largeImageCm) { issues.push('ページ全体を覆う画像配置を検出 (大きなCTM変換行列 + Do演算子)'); score += 3; }
+  const hasTextOps = /\bTj\b|\bTJ\b|\bTf\b|\bBT\b/.test(content);
+  const hasImageDo = /\bDo\b/.test(content);
+  if (hasImageDo && !hasTextOps) { issues.push('テキスト描画演算子なし・画像描画演算子あり（全テキストが画像化された可能性）'); score += 4; }
+  const whiteRect = /1\s+1\s+1\s+rg[\s\S]{0,200}re\s+f/.test(content) || /1\s+g[\s\S]{0,200}re\s+f/.test(content);
+  if (whiteRect && hasImageDo) { issues.push('白矩形塗りつぶし + 画像オーバーレイを検出（テキスト隠蔽の可能性）'); score += 4; }
+  const hasFont = str.includes('/Font');
+  if (!hasFont && hasImageDo) { issues.push('フォントリソースなし・画像あり（テキストが画像に置き換えられた可能性）'); score += 3; }
+  const xobjTypes = [...str.matchAll(/\/Subtype\s*\/(\w+)/g)].map(m => m[1]);
+  if (xobjTypes.includes('Image') && !xobjTypes.includes('Form') && !hasFont) { issues.push('XObjectが画像のみ（フォームXObjectなし）'); score += 1; }
+  const level = score >= 7 ? '高' : score >= 4 ? '中' : score >= 2 ? '低' : 'なし';
+  return { print_repdf_suspicion: level, print_repdf_score: score, print_repdf_issues: issues };
+}
+
+// ============================================================
+// 3. detect_image_misalignment
+// ============================================================
+function detectImageMisalignment(data) {
+  const issues = []; let score = 0;
+  const str = bytesToStr(data);
+  let pageW = 595.0, pageH = 842.0;
+  const boxM = /\/MediaBox\s*\[\s*([\d.+-]+)\s+([\d.+-]+)\s+([\d.+-]+)\s+([\d.+-]+)\s*\]/.exec(str);
+  if (boxM) {
+    try { pageW = parseFloat(boxM[3]) - parseFloat(boxM[1]); pageH = parseFloat(boxM[4]) - parseFloat(boxM[2]); } catch(e) {}
+  }
+  const content = decompressStreams(str, data);
+  const cmRe = /([-+]?[\d.]+)\s+([-+]?[\d.]+)\s+([-+]?[\d.]+)\s+([-+]?[\d.]+)\s+([-+]?[\d.]+)\s+([-+]?[\d.]+)\s+cm/g;
+  const placements = []; let cmm;
+  while ((cmm = cmRe.exec(content)) !== null) {
+    try {
+      const a=parseFloat(cmm[1]),b=parseFloat(cmm[2]),c=parseFloat(cmm[3]),d=parseFloat(cmm[4]),e=parseFloat(cmm[5]),f=parseFloat(cmm[6]);
+      const win = content.slice(cmm.index + cmm[0].length, cmm.index + cmm[0].length + 300);
+      if (/\bDo\b/.test(win)) placements.push({a,b,c,d,e,f});
+    } catch(ex) {}
+  }
+  if (placements.length === 0) return { image_misalignment_suspicion: 'なし', image_misalignment_score: 0, image_misalignment_issues: [] };
+  function isFullpage(p) {
+    return Math.abs(Math.abs(p.a)-pageW)<10 && Math.abs(Math.abs(p.d)-pageH)<10 &&
+           Math.abs(p.e)<10 && (Math.abs(p.f)<10||Math.abs(p.f-pageH)<10) && Math.abs(p.b)<1 && Math.abs(p.c)<1;
+  }
+  const partial = placements.filter(p => !isFullpage(p));
+  if (partial.length === 0) return { image_misalignment_suspicion: 'なし', image_misalignment_score: 0, image_misalignment_issues: [] };
+  const fracCases = partial.filter(p => Math.abs(p.e-Math.round(p.e))>0.5 || Math.abs(p.f-Math.round(p.f))>0.5);
+  if (fracCases.length > 0) { issues.push(`非整数座標への画像配置を検出 (${fracCases.length}件, 例: x=${fracCases[0].e.toFixed(2)}pt, y=${fracCases[0].f.toFixed(2)}pt)`); score+=3; }
+  const rotatedCases = partial.filter(p => (Math.abs(p.b)>0.01&&Math.abs(p.b)<20)||(Math.abs(p.c)>0.01&&Math.abs(p.c)<20));
+  if (rotatedCases.length > 0) { issues.push(`画像に微小な傾きを検出 (${rotatedCases.length}件, 例: b=${rotatedCases[0].b.toFixed(4)}, c=${rotatedCases[0].c.toFixed(4)})`); score+=3; }
+  if (partial.length >= 2) {
+    const bboxes = partial.map(p => {
+      const cx=[p.e,p.a+p.e,p.c+p.e,p.a+p.c+p.e], cy=[p.f,p.b+p.f,p.d+p.f,p.b+p.d+p.f];
+      return [Math.min(...cx),Math.min(...cy),Math.max(...cx),Math.max(...cy)];
+    }).sort((a,b)=>a[1]-b[1]);
+    const gaps=[], overlaps=[];
+    for (let i=0;i<bboxes.length-1;i++) { const g=bboxes[i+1][1]-bboxes[i][3]; if(g>1.5) gaps.push(g); else if(g<-1.5) overlaps.push(Math.abs(g)); }
+    if (gaps.length>0) { issues.push(`隣接画像間に隙間を検出 (${gaps.length}箇所, 最大${Math.max(...gaps).toFixed(1)}pt)`); score+=2; }
+    if (overlaps.length>0) { issues.push(`隣接画像間に重複を検出 (${overlaps.length}箇所, 最大${Math.max(...overlaps).toFixed(1)}pt)`); score+=2; }
+  }
+  const marginIssues=[];
+  for (const p of partial) {
+    const re=p.e+Math.abs(p.a), te=p.f+Math.abs(p.d);
+    if (Math.abs(re-pageW)>1&&Math.abs(re-pageW)<30) marginIssues.push(`右端ズレ ${re.toFixed(1)}pt (ページ幅 ${pageW.toFixed(1)}pt)`);
+    if (p.f>0&&Math.abs(te-pageH)>1&&Math.abs(te-pageH)<30) marginIssues.push(`上端ズレ ${te.toFixed(1)}pt (ページ高 ${pageH.toFixed(1)}pt)`);
+  }
+  if (marginIssues.length>0) { issues.push('画像のページ枠整合性に問題: '+marginIssues.slice(0,3).join('; ')); score+=2; }
+  const level = score>=6?'高':score>=3?'中':score>=1?'低':'なし';
+  return { image_misalignment_suspicion: level, image_misalignment_score: score, image_misalignment_issues: issues };
+}
+
+// ============================================================
+// 4. detect_tampering
+// ============================================================
+async function detectTampering(filename, data) {
+  const sha256 = await sha256hex(data);
+  const analysis  = readPdfBytes(data);
+  const printInfo = detectPrintRepdf(data);
+  const alignInfo = detectImageMisalignment(data);
+  const allOk = analysis.xref_ok && analysis.trailer_ok && analysis.stream_ok && analysis.structure_ok;
+  const alignSuspicion = alignInfo.image_misalignment_suspicion;
+  const printSuspicion = printInfo.print_repdf_suspicion;
+  // 印刷再PDF化「高」（スコア7以上）のみ複合機スキャン扱いとし画像ズレを誤差として無視する
+  const isScannedPdf = printSuspicion === '高';
+  let status, tampered;
+  if (!allOk)                                        { status='異常検出'; tampered='あり'; }
+  else if (analysis.incremental_update)              { status='警告: インクリメンタルアップデート検出'; tampered='疑い'; }
+  else if (printSuspicion === '中')                  { status='異常検出: 印刷→再PDF化の疑い（確度=中）'; tampered='あり'; }
+  else if (printSuspicion === '低')                  { status='警告: 印刷→再PDF化の可能性（確度=低）'; tampered='疑い'; }
+  else if (!isScannedPdf && (alignSuspicion==='高'||alignSuspicion==='中')) { status=`警告: 手動画像貼り付けの疑い（確度=${alignSuspicion}）`; tampered='疑い'; }
+  else if (!isScannedPdf && alignSuspicion==='低')   { status='注意: 手動画像貼り付けの可能性（低）'; tampered='注意'; }
+  else                                               { status='正常'; tampered='なし'; }
+  const allIssues = [...analysis.issues, ...alignInfo.image_misalignment_issues];
+  return {
+    filename, file_size: data.length, sha256, tampered, status,
+    issues: allIssues.length>0 ? allIssues.join('; ') : 'なし',
+    incremental_update: analysis.incremental_update?'あり':'なし',
+    xref_ok:      analysis.xref_ok     ?'OK':'NG',
+    trailer_ok:   analysis.trailer_ok  ?'OK':'NG',
+    stream_ok:    analysis.stream_ok   ?'OK':'NG',
+    structure_ok: analysis.structure_ok?'OK':'NG',
+    print_repdf_suspicion:        printInfo.print_repdf_suspicion,
+    print_repdf_score:            printInfo.print_repdf_score,
+    image_misalignment_suspicion: alignInfo.image_misalignment_suspicion,
+    image_misalignment_score:     alignInfo.image_misalignment_score,
+  };
+}
+
+// ============================================================
+// UI
+// ============================================================
+(function(){
+  const dropzone    = document.getElementById('dropzone');
+  const fileInput   = document.getElementById('file-input');
+  const folderInput = document.getElementById('folder-input');
+  const fileList    = document.getElementById('file-list');
+  const btnScan     = document.getElementById('btn-scan');
+  const btnClear    = document.getElementById('btn-clear');
+  const btnFolder   = document.getElementById('btn-folder');
+  const btnDl       = document.getElementById('btn-download');
+  const errorMsg    = document.getElementById('error-msg');
+  const progressWrap = document.getElementById('progress-bar-wrap');
+  const progressBar  = document.getElementById('progress-bar');
+  const progressText = document.getElementById('progress-text');
+  const resultTable  = document.getElementById('result-table');
+  const resultTbody  = document.getElementById('result-tbody');
+
+  // chips: {label, chipFiles: File[], isFolder: bool}[]
+  let chips = [];
+  let results = [];
+
+  function getFiles() { return chips.flatMap(c => c.chipFiles); }
+
+  // ── ドラッグ＆ドロップ・個別ファイル選択 ──
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault(); dropzone.classList.remove('drag-over');
+    addIndividualFiles([...e.dataTransfer.files]);
+  });
+  dropzone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => { addIndividualFiles([...fileInput.files]); fileInput.value=''; });
+
+  // ── フォルダ選択 ──
+  btnFolder.addEventListener('click', e => { e.stopPropagation(); folderInput.click(); });
+  folderInput.addEventListener('change', () => { addFolderFiles([...folderInput.files]); folderInput.value=''; });
+
+  function addIndividualFiles(newFiles) {
+    hideError();
+    const pdfs = newFiles.filter(f => f.type==='application/pdf' || f.name.endsWith('.pdf'));
+    if (pdfs.length !== newFiles.length) showError('PDFファイルのみ対応しています。');
+    const existing = getFiles();
+    const individualCount = chips.filter(c => !c.isFolder).length;
+    let added = 0;
+    for (const f of pdfs) {
+      if (individualCount + added >= 100) { showError('個別選択は最大100ファイルまでです。フォルダ選択をご利用ください。'); break; }
+      if (!existing.find(x => x.name===f.name && x.size===f.size)) {
+        chips.push({ label: f.name, chipFiles: [f], isFolder: false });
+        added++;
+      }
+    }
+    renderChips();
+  }
+
+  function addFolderFiles(allFiles) {
+    hideError();
+    const pdfs = allFiles.filter(f => f.type==='application/pdf' || f.name.endsWith('.pdf'));
+    if (pdfs.length === 0) { showError('フォルダ内にPDFファイルが見つかりませんでした。'); return; }
+    // フォルダ名はwebkitRelativePathの先頭ディレクトリ名
+    const folderName = (pdfs[0].webkitRelativePath || '').split('/')[0] || 'フォルダ';
+    chips.push({ label: `📁 ${folderName}（${pdfs.length}件のPDF）`, chipFiles: pdfs, isFolder: true });
+    renderChips();
+  }
+
+  function renderChips() {
+    fileList.innerHTML = '';
+    chips.forEach((chip, ci) => {
+      const div = document.createElement('div');
+      div.className = 'file-chip' + (chip.isFolder ? ' folder-chip' : '');
+      div.innerHTML = `<span>${esc(chip.label)}</span><span class="remove" data-ci="${ci}">&times;</span>`;
+      fileList.appendChild(div);
+    });
+    fileList.querySelectorAll('.remove').forEach(btn => {
+      btn.addEventListener('click', () => { chips.splice(+btn.dataset.ci, 1); renderChips(); });
+    });
+  }
+
+  btnClear.addEventListener('click', () => {
+    chips = []; results = [];
+    renderChips();
+    resultTable.style.display = 'none';
+    resultTbody.innerHTML = '';
+    btnDl.style.display = 'none';
+    progressWrap.style.display = 'none';
+    hideError();
+  });
+
+  // ── スキャン ──
+  btnScan.addEventListener('click', async () => {
+    const allFiles = getFiles();
+    if (allFiles.length === 0) { showError('ファイルを追加してください。'); return; }
+    hideError();
+    results = [];
+    resultTbody.innerHTML = '';
+    resultTable.style.display = 'none';
+    btnDl.style.display = 'none';
+    btnScan.disabled = true;
+    btnScan.innerHTML = '<span class="spinner"></span>解析中...';
+    progressWrap.style.display = 'block';
+    progressBar.style.width = '0%';
+
+    for (let i = 0; i < allFiles.length; i++) {
+      const f = allFiles[i];
+      // 表示名: フォルダ選択の場合はフォルダ相対パスを使用
+      const displayName = f.webkitRelativePath || f.name;
+      progressText.textContent = `${i + 1} / ${allFiles.length}  ${displayName}`;
+      progressBar.style.width = `${Math.round((i / allFiles.length) * 100)}%`;
+      try {
+        const buf = await f.arrayBuffer();
+        const data = new Uint8Array(buf);
+        const res = await detectTampering(displayName, data);
+        results.push(res);
+        appendRow(i + 1, res);
+      } catch(err) {
+        results.push({ filename: displayName, error: String(err) });
+        appendErrorRow(i + 1, displayName, String(err));
+      }
+    }
+
+    progressBar.style.width = '100%';
+    progressText.textContent = `完了 (${allFiles.length} ファイル)`;
+    resultTable.style.display = 'table';
+    btnDl.style.display = 'inline-block';
+    btnScan.disabled = false;
+    btnScan.innerHTML = '&#128269; スキャン';
+  });
+
+  function badge(val) {
+    if (val==='なし'||val==='OK'||val==='正常') return `<span class="badge badge-ok">${val}</span>`;
+    if (val==='疑い'||(typeof val==='string'&&val.startsWith('警告'))) return `<span class="badge badge-warn">${val}</span>`;
+    if (val==='注意'||(typeof val==='string'&&val.startsWith('注意'))) return `<span class="badge badge-warn">${val}</span>`;
+    if (val==='あり'||val==='NG'||(typeof val==='string'&&val.startsWith('異常検出'))) return `<span class="badge badge-ng">${val}</span>`;
+    return `<span class="badge badge-ok">${val}</span>`;
+  }
+  function badgeRepdf(level, score) {
+    const label = `${level||'-'}${score!=null?' ('+score+'pt)':''}`;
+    if (!level||level==='なし') return `<span class="badge badge-ok">${label}</span>`;
+    if (level==='高') return `<span class="badge badge-ok">${label}</span>`;
+    if (level==='中') return `<span class="badge badge-ng">${label}</span>`;
+    return `<span class="badge badge-warn">${label}</span>`;
+  }
+  function badgeMisalign(level, score) {
+    const label = `${level||'-'}${score!=null?' ('+score+'pt)':''}`;
+    if (!level||level==='なし') return `<span class="badge badge-ok">${label}</span>`;
+    if (level==='低'||level==='中') return `<span class="badge badge-warn">${label}</span>`;
+    return `<span class="badge badge-ng">${label}</span>`;
+  }
+
+  function appendRow(idx, r) {
+    const tr = document.createElement('tr');
+    const sizeKb = r.file_size ? (r.file_size/1024).toFixed(1)+' KB' : '-';
+    tr.innerHTML = `
+      <td>${idx}</td>
+      <td>${esc(r.filename)}</td>
+      <td>${sizeKb}</td>
+      <td>${badge(r.tampered)}</td>
+      <td>${badge(r.status)}</td>
+      <td>${badge(r.xref_ok)}</td>
+      <td>${badge(r.trailer_ok)}</td>
+      <td>${badge(r.stream_ok)}</td>
+      <td>${badge(r.structure_ok)}</td>
+      <td>${badge(r.incremental_update)}</td>
+      <td>${badgeRepdf(r.print_repdf_suspicion, r.print_repdf_score)}</td>
+      <td>${badgeMisalign(r.image_misalignment_suspicion, r.image_misalignment_score)}</td>
+      <td style="color:#94a3b8;font-size:0.75rem">${esc(r.issues||'-')}</td>
+      <td style="font-family:monospace;font-size:0.75rem">${(r.sha256||'').substring(0,16)}</td>
+    `;
+    resultTbody.appendChild(tr);
+  }
+
+  function appendErrorRow(idx, name, err) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${idx}</td><td>${esc(name)}</td><td colspan="12" style="color:#f87171">${esc(err)}</td>`;
+    resultTbody.appendChild(tr);
+  }
+
+  // ── CSV ダウンロード（クライアントサイド生成）──
+  btnDl.addEventListener('click', () => {
+    const fields = ['filename','file_size','tampered','status','xref_ok','trailer_ok','stream_ok',
+                    'structure_ok','incremental_update','print_repdf_suspicion','print_repdf_score',
+                    'image_misalignment_suspicion','image_misalignment_score','issues','sha256'];
+    const csvRows = [fields.join(',')];
+    for (const r of results) {
+      csvRows.push(fields.map(f => { const v=r[f]!==undefined?String(r[f]):''; return '"'+v.replace(/"/g,'""')+'"'; }).join(','));
+    }
+    const blob = new Blob(['﻿' + csvRows.join('\r\n')], { type: 'text/csv;charset=utf-8-sig' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href=url; a.download='tamper_detection_result.csv'; a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function showError(msg) { errorMsg.textContent=msg; errorMsg.style.display='block'; }
+  function hideError() { errorMsg.style.display='none'; }
+
+  // ── 解説モーダル ──
+  const modalOverlay = document.getElementById('modal-overlay');
+  const modalClose   = document.getElementById('modal-close');
+  const btnExplain   = document.getElementById('btn-explain');
+  btnExplain.addEventListener('click', () => { modalOverlay.classList.add('open'); document.body.style.overflow='hidden'; });
+  modalClose.addEventListener('click', closeModal);
+  modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) closeModal(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+  function closeModal() { modalOverlay.classList.remove('open'); document.body.style.overflow=''; }
+})();
+</script>
+</body>
+</html>
