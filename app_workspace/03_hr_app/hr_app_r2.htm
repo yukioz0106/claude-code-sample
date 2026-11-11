@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>人事シミュレーション</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI','Yu Gothic UI',sans-serif;background:#ECEFF1;overflow-x:auto;}
+
+/* ---- toolbar ---- */
+#toolbar{display:flex;align-items:center;background:#1A237E;color:#fff;padding:8px 16px;gap:16px;min-height:48px;}
+#dept-name{font-size:18px;font-weight:700;cursor:pointer;border-bottom:2px dashed transparent;padding:2px 4px;}
+#dept-name:hover{border-bottom-color:#FFE082;}
+#total-count{margin-left:auto;color:#FFE082;font-size:14px;font-weight:600;}
+.btn{background:#283593;color:#fff;border:none;border-radius:4px;padding:6px 18px;cursor:pointer;font-size:13px;}
+.btn:hover{background:#3949AB;}
+.btn-init{background:#B71C1C;}
+.btn-init:hover{background:#D32F2F;}
+#status-bar{background:#B0BEC5;color:#37474F;font-size:12px;padding:4px 12px;border-top:1px solid #90A4AE;}
+
+/* ---- main layout ---- */
+#main{padding:12px;min-width:900px;}
+
+/* ---- tier rows ---- */
+.tier-row{display:flex;justify-content:center;gap:0;margin-bottom:4px;}
+.connector-h{height:2px;background:#90A4AE;margin:0 60px;}
+
+/* ---- position slot ---- */
+.pos-slot{display:flex;flex-direction:column;align-items:center;}
+.pos-label{background:#3949AB;color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:3px 3px 0 0;width:120px;text-align:center;cursor:pointer;}
+.pos-label:hover{background:#283593;}
+.slot-area{width:120px;min-height:64px;background:#E8EAF6;border:2px solid #9FA8DA;border-radius:0 0 4px 4px;display:flex;align-items:center;justify-content:center;}
+.slot-area.drag-over{background:#C5CAE9;border-color:#3F51B5;}
+
+/* ---- groups row ---- */
+#groups-row{display:flex;gap:8px;margin-top:4px;flex-wrap:wrap;}
+.group-panel{flex:1;background:#F5F5F5;border:2px solid #90A4AE;border-radius:6px;min-width:220px;}
+.group-header{background:#1565C0;color:#fff;font-size:13px;font-weight:700;padding:5px 10px;border-radius:4px 4px 0 0;}
+.gm-row{display:flex;align-items:center;gap:6px;padding:6px 6px 4px 6px;background:#E3F2FD;border-bottom:1px solid #BBDEFB;}
+.gm-label{background:#1976D2;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;cursor:pointer;white-space:nowrap;}
+.gm-label:hover{background:#1565C0;}
+.gm-slot{width:112px;min-height:58px;background:#BBDEFB;border:2px dashed #1976D2;border-radius:4px;display:flex;align-items:center;justify-content:center;}
+.gm-slot.drag-over{background:#90CAF9;}
+/* グループ直属メンバーエリア（チームなし） */
+.member-area{display:flex;flex-wrap:wrap;gap:4px;padding:6px;min-height:40px;background:#FAFAFA;}
+.member-area.drag-over{background:#E8F5E9;}
+
+/* ---- team section ---- */
+.team-section{border-top:1px solid #CFD8DC;margin:0 6px 6px 6px;}
+.team-header-row{display:flex;align-items:center;gap:4px;padding:4px 4px 2px 4px;background:#F3E5F5;}
+.team-label{background:#6A1B9A;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;cursor:pointer;white-space:nowrap;}
+.team-label:hover{background:#4A148C;}
+.tl-slot{flex:1;min-height:48px;background:#EDE7F6;border:1px dashed #AB47BC;border-radius:3px;display:flex;align-items:center;justify-content:center;padding:2px;}
+.tl-slot.drag-over{background:#CE93D8;}
+.team-member-area{display:flex;flex-wrap:wrap;gap:4px;padding:4px 4px 6px 4px;min-height:36px;background:#FAF5FF;}
+.team-member-area.drag-over{background:#F3E5F5;}
+
+/* ---- unassigned ---- */
+#unassigned-section{margin-top:10px;}
+#unassigned-header{background:#455A64;color:#fff;font-size:13px;font-weight:700;padding:5px 10px;border-radius:4px 4px 0 0;}
+#unassigned-area{display:flex;flex-wrap:wrap;gap:4px;padding:6px;min-height:60px;background:#CFD8DC;border:2px solid #90A4AE;border-radius:0 0 4px 4px;}
+#unassigned-area.drag-over{background:#B2DFDB;}
+
+/* ---- employee card ---- */
+.emp-card{width:108px;min-height:52px;border-radius:5px;padding:5px 6px;cursor:grab;user-select:none;border:2px solid rgba(255,255,255,0.3);transition:box-shadow .15s;}
+.emp-card:hover{box-shadow:0 4px 12px rgba(0,0,0,0.35);}
+.emp-card:active{cursor:grabbing;}
+.emp-card .card-name{color:#fff;font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.emp-card .card-grade{color:#FFE082;font-size:10px;}
+.empty-hint{color:#9E9E9E;font-size:11px;}
+
+/* ---- tooltip ---- */
+#tooltip{position:fixed;display:none;background:#FFFDE7;border:1px solid #F9A825;border-radius:5px;padding:8px 12px;font-size:11px;line-height:1.7;max-width:300px;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,0.2);pointer-events:none;}
+#tooltip table td:first-child{color:#5D4037;font-weight:600;padding-right:8px;white-space:nowrap;}
+
+/* ---- drag ghost ---- */
+#drag-ghost{position:fixed;pointer-events:none;z-index:9998;opacity:0.75;display:none;border-radius:5px;padding:5px 6px;width:108px;}
+#drag-ghost .card-name{color:#fff;font-size:11px;font-weight:700;}
+#drag-ghost .card-grade{color:#FFE082;font-size:10px;}
+
+/* ---- file open overlay ---- */
+#open-overlay{position:fixed;inset:0;background:rgba(26,35,126,0.92);display:flex;align-items:center;justify-content:center;z-index:10000;}
+#open-overlay.hidden{display:none;}
+#open-box{background:#fff;border-radius:10px;padding:40px 48px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.4);min-width:360px;}
+#open-box h2{color:#1A237E;font-size:20px;margin-bottom:8px;}
+#open-box p{color:#546E7A;font-size:13px;margin-bottom:28px;}
+.open-btn-row{display:flex;flex-direction:column;gap:12px;}
+.open-btn-main{background:#1A237E;color:#fff;border:none;border-radius:6px;padding:12px 36px;font-size:15px;cursor:pointer;font-weight:700;}
+.open-btn-main:hover{background:#283593;}
+.open-btn-init{background:#B71C1C;color:#fff;border:none;border-radius:6px;padding:10px 36px;font-size:13px;cursor:pointer;font-weight:600;}
+.open-btn-init:hover{background:#D32F2F;}
+.open-divider{border:none;border-top:1px solid #CFD8DC;margin:4px 0;}
+.open-hint{color:#90A4AE;font-size:11px;margin-top:4px;}
+
+/* ---- init progress ---- */
+#init-progress{position:fixed;inset:0;background:rgba(26,35,126,0.92);display:flex;align-items:center;justify-content:center;z-index:10001;}
+#init-progress.hidden{display:none;}
+#init-box{background:#fff;border-radius:10px;padding:32px 40px;text-align:center;min-width:320px;}
+#init-box h3{color:#B71C1C;margin-bottom:12px;}
+#init-msg{color:#37474F;font-size:13px;margin-bottom:14px;}
+.init-dl-btn{background:#1A237E;color:#fff;border:none;border-radius:6px;padding:10px 28px;font-size:13px;cursor:pointer;font-weight:600;margin:4px;}
+.init-dl-btn:hover{background:#283593;}
+.init-close-btn{background:#546E7A;color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:12px;cursor:pointer;margin-top:8px;}
+.init-close-btn:hover{background:#455A64;}
+/* ---- password ui ---- */
+.pw-section{background:#FFF8E1;border:1px solid #FFE082;border-radius:6px;padding:10px 14px;margin-bottom:14px;text-align:left;}
+.pw-section-label{display:block;font-size:11px;color:#5D4037;font-weight:600;margin-bottom:4px;}
+.pw-hint{font-size:10px;color:#90A4AE;margin-top:2px;}
+.pw-input{width:100%;padding:6px 10px;border:1px solid #B0BEC5;border-radius:4px;font-size:13px;box-sizing:border-box;margin-bottom:6px;}
+.pw-input:focus{outline:none;border-color:#1A237E;}
+.pw-dialog{position:fixed;inset:0;background:rgba(26,35,126,0.92);display:flex;align-items:center;justify-content:center;z-index:10002;}
+.pw-dialog.hidden{display:none;}
+.pw-dialog-box{background:#fff;border-radius:10px;padding:28px 36px;text-align:center;min-width:300px;box-shadow:0 8px 32px rgba(0,0,0,0.4);}
+.pw-dialog-box h3{color:#1A237E;margin-bottom:6px;}
+.pw-dialog-box p{color:#546E7A;font-size:12px;margin-bottom:14px;}
+.pw-field-label{display:block;font-size:11px;color:#5D4037;font-weight:600;margin-bottom:3px;text-align:left;}
+.pw-error{color:#B71C1C;font-size:12px;min-height:18px;margin-bottom:8px;}
+/* ---- sharepoint file list ---- */
+#sp-open-section{margin-bottom:12px;text-align:left;}
+.sp-section-title{font-size:12px;color:#546E7A;font-weight:600;margin-bottom:6px;}
+#sp-file-list{max-height:220px;overflow-y:auto;}
+.sp-file-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:4px;cursor:pointer;border:1px solid #E0E0E0;background:#F5F5F5;margin-bottom:4px;}
+.sp-file-item:hover{background:#E8EAF6;border-color:#9FA8DA;}
+.sp-file-ext{font-size:10px;font-weight:700;padding:2px 5px;border-radius:3px;color:#fff;min-width:38px;text-align:center;}
+.sp-file-ext.json{background:#E65100;}
+.sp-file-ext.xlsx{background:#2E7D32;}
+.sp-file-name{flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1A237E;}
+.sp-file-date{color:#90A4AE;font-size:10px;white-space:nowrap;}
+.sp-loading{color:#90A4AE;font-size:12px;padding:8px 0;text-align:center;}
+.sp-save-row{display:flex;align-items:center;gap:8px;background:#E8F5E9;border:1px solid #A5D6A7;border-radius:4px;padding:6px 10px;margin-bottom:8px;font-size:12px;color:#1B5E20;}
+.sp-save-row input[type=checkbox]{accent-color:#2E7D32;width:14px;height:14px;}
+</style>
+</head>
+<body>
+
+<input type="file" id="file-input-json" accept=".json" style="display:none" onchange="onJsonSelected(event)">
+<input type="file" id="file-input-xlsx" accept=".xlsx,.xls" style="display:none" onchange="onXlsxSelected(event)">
+<input type="file" id="file-input-init" accept=".xlsx,.xls" style="display:none" onchange="onInitXlsxSelected(event)">
+
+<div id="open-overlay">
+  <div id="open-box">
+    <h2>人事シミュレーション</h2>
+    <p>ファイルを選択して開始してください</p>
+    <div id="sp-open-section" class="hidden">
+      <div class="sp-section-title">🌐 SharePoint 同じフォルダのファイル</div>
+      <div id="sp-file-list"><div class="sp-loading">読み込み中...</div></div>
+      <hr class="open-divider">
+    </div>
+    <div class="open-btn-row">
+      <button class="open-btn-main" onclick="document.getElementById('file-input-json').click()">📂 JSON を開く（ローカル）</button>
+      <button class="open-btn-main" style="background:#0D47A1;" onclick="document.getElementById('file-input-xlsx').click()">📊 Excel を開く（ローカル）</button>
+      <hr class="open-divider">
+      <button class="open-btn-init" onclick="document.getElementById('file-input-init').click()">🔄 初期化：Excel→JSON変換（ローカル）</button>
+      <div class="open-hint">Excel を JSON に変換してダウンロードします</div>
+    </div>
+  </div>
+</div>
+
+<div id="init-progress" class="hidden">
+  <div id="init-box">
+    <h3>初期化完了</h3>
+    <div id="init-msg"></div>
+    <div class="pw-section">
+      <span class="pw-section-label">🔒 JSONにパスワードを設定（必須）</span>
+      <input class="pw-input" type="password" id="init-pw" placeholder="パスワードを入力">
+      <input class="pw-input" type="password" id="init-pw-confirm" placeholder="パスワードを再入力">
+      <div class="pw-error" id="init-pw-error"></div>
+      <div class="pw-hint">設定したパスワードはJSON読み込み時に必要です</div>
+    </div>
+    <div id="init-sp-save-row" class="sp-save-row hidden">
+      <input type="checkbox" id="init-sp-save-chk" checked>
+      <span>SharePoint の同じフォルダにも保存する</span>
+      <span id="init-sp-save-filename" style="font-style:italic;color:#388E3C;"></span>
+    </div>
+    <div><button class="init-dl-btn" onclick="downloadInitJson()">💾 JSONをダウンロード</button></div>
+    <div><button class="init-dl-btn" style="background:#2E7D32;" onclick="loadInitData()">▶ そのまま編集を開始</button></div>
+    <div><button class="init-close-btn" onclick="closeInitDialog()">✕ 閉じる</button></div>
+  </div>
+</div>
+
+<!-- 保存パスワードダイアログ -->
+<div id="save-pw-dialog" class="pw-dialog hidden">
+  <div class="pw-dialog-box">
+    <h3>🔒 保存パスワードの設定</h3>
+    <p>JSONファイルを暗号化して保存します。<br>パスワードは必須です。</p>
+    <label class="pw-field-label">パスワード</label>
+    <input class="pw-input" type="password" id="save-pw" placeholder="パスワードを入力">
+    <label class="pw-field-label">パスワード（確認）</label>
+    <input class="pw-input" type="password" id="save-pw-confirm" placeholder="パスワードを再入力">
+    <div class="pw-error" id="save-pw-error"></div>
+    <div id="save-sp-row" class="sp-save-row hidden">
+      <input type="checkbox" id="save-sp-chk" checked>
+      <span>SharePoint にも保存：</span>
+      <span id="save-sp-filename" style="font-style:italic;color:#388E3C;"></span>
+    </div>
+    <div>
+      <button class="init-dl-btn" onclick="execSave()">💾 保存</button>
+      <button class="init-close-btn" onclick="closeSaveDialog()">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<!-- JSON読み込みパスワードダイアログ -->
+<div id="open-pw-dialog" class="pw-dialog hidden">
+  <div class="pw-dialog-box">
+    <h3>🔒 パスワードで保護されたファイル</h3>
+    <p id="open-pw-filename" style="font-size:12px;color:#37474F;margin-bottom:14px;"></p>
+    <label class="pw-field-label">パスワード</label>
+    <input class="pw-input" type="password" id="open-pw" placeholder="パスワードを入力">
+    <div class="pw-error" id="open-pw-error"></div>
+    <div>
+      <button class="init-dl-btn" onclick="execOpenJson()">📂 開く</button>
+      <button class="init-close-btn" onclick="closeOpenDialog()">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<div id="toolbar">
+  <span id="dept-name" title="ダブルクリックで部門名を変更"></span>
+  <button class="btn" onclick="saveData()">💾 保存 (JSON)</button>
+  <button class="btn btn-init" onclick="document.getElementById('file-input-init').click()">🔄 初期化</button>
+  <span id="total-count"></span>
+</div>
+<div id="status-bar">ファイルを選択してください</div>
+<div id="main" style="display:none">
+  <div class="tier-row" id="tier-dept"></div>
+  <div class="connector-h"></div>
+  <div class="tier-row" id="tier-vp"></div>
+  <div class="connector-h"></div>
+  <div id="groups-row"></div>
+  <div id="unassigned-section">
+    <div id="unassigned-header">未配属</div>
+    <div id="unassigned-area" data-drop="unassigned"></div>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+<div id="drag-ghost"><div class="card-name" id="ghost-name"></div><div class="card-grade" id="ghost-grade"></div></div>
+
+<script>
+// ---- 暗号化ユーティリティ (AES-GCM + PBKDF2) ----
+async function deriveKey(password, salt) {
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    {name:'PBKDF2', salt, iterations:200000, hash:'SHA-256'},
+    keyMaterial, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']);
+}
+async function encryptJson(jsonStr, password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv   = crypto.getRandomValues(new Uint8Array(12));
+  const key  = await deriveKey(password, salt);
+  const cipher = new Uint8Array(await crypto.subtle.encrypt(
+    {name:'AES-GCM', iv}, key, new TextEncoder().encode(jsonStr)));
+  const out = new Uint8Array(4 + 16 + 12 + cipher.length);
+  out.set([0x48,0x52,0x50,0x57], 0); // magic "HRPW"
+  out.set(salt, 4);
+  out.set(iv, 20);
+  out.set(cipher, 32);
+  let s = '';
+  for (let i = 0; i < out.length; i++) s += String.fromCharCode(out[i]);
+  return btoa(s);
+}
+async function decryptJson(b64, password) {
+  const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  if (bytes[0]!==0x48||bytes[1]!==0x52||bytes[2]!==0x50||bytes[3]!==0x57)
+    throw new Error('形式が不正です');
+  const key = await deriveKey(password, bytes.slice(4,20));
+  const plain = await crypto.subtle.decrypt(
+    {name:'AES-GCM', iv: bytes.slice(20,32)}, key, bytes.slice(32));
+  return new TextDecoder().decode(plain);
+}
+function isEncrypted(text) {
+  try {
+    const b = Uint8Array.from(atob(text.trim()), c => c.charCodeAt(0));
+    return b[0]===0x48 && b[1]===0x52 && b[2]===0x50 && b[3]===0x57;
+  } catch { return false; }
+}
+
+// ---- グレードカラー ----
+const GRADE_COLOR_MAP = {
+  "BL3":"#4527A0","BL4":"#6A1B9A","BL5":"#1565C0","BL6":"#1976D2","BL7":"#1E88E5",
+  "E1":"#00695C","E2":"#00796B","E3":"#2E7D32","E3+":"#388E3C",
+  "S1":"#BF6900","S2":"#BF360C","S3":"#E65100","S4":"#4E342E","S5":"#546E7A",
+  "SS1":"#37474F","SS2":"#455A64","SS3":"#546E7A","SS3+":"#607D8B","SS4":"#78909C","SS5":"#90A4AE",
+};
+
+function zen2han(str) {
+  return String(str || '').replace(/[Ａ-Ｚａ-ｚ０-９＋]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+}
+function gradeCodeOf(emp) {
+  const clean = s => zen2han(String(s || '')).replace(/\s*\(.*\)/, '').trim();
+  const t = clean(emp['等級名称']); if (t && t !== '-') return t;
+  const s = clean(emp['資格']); if (s && s !== '-' && s !== '再雇用契約社員') return s;
+  const y = clean(emp['役割グレード名称']); if (y && y !== '-') return y;
+  return '';
+}
+function gradeColor(emp) { return GRADE_COLOR_MAP[gradeCodeOf(emp)] || '#607D8B'; }
+
+const GRADE_RANK = {
+  "BL3":85,"BL4":80,"BL5":75,"BL6":70,"BL7":65,
+  "E1":60,"E2":55,"E3+":52,"E3":50,
+  "S1":40,"S2":35,"S3":30,"S4":25,"S5":20,
+  "SS1":15,"SS2":14,"SS3+":13,"SS3":12,"SS4":11,"SS5":10,
+};
+function gradeSortKey(emp) { return -(GRADE_RANK[gradeCodeOf(emp)] || 0); }
+
+const TOOLTIP_FIELDS = [
+  "社員番号","社員名称","社内呼称","等級名称","役割グレード名称","役職名称",
+  "所属名称","チーム名","社員区分","コース区分名称","資格","ポジション名称",
+  "性別","生年月日","入社日付","勤続年数(休職控除)",
+  "採用区分","学歴形態区分","学校名称","学部名称","学科名称",
+  "婚姻区分","総扶養人数（税法上）","TOEIC（スコア）","管轄人事"
+];
+
+const FIXED_ROLES = ["dept_head","vp1","vp2"];
+
+// ---- state ----
+const state = {
+  dept_name: "",
+  pos_labels: { dept_head:"部長", vp1:"副部長", vp2:"副部長" },
+  employees: [],
+};
+let _initData = null;
+
+// ============================================================
+// グループ・チーム定義の構築
+// ============================================================
+
+function buildGroupDefs(employees) {
+  const deptShozoku = new Set();
+  for (const emp of employees) {
+    const yaku = String(emp['役職名称'] || '').trim();
+    if (yaku === '部長' || yaku === '副部長') deptShozoku.add(String(emp['所属名称'] || '').trim());
+  }
+
+  const seenG = new Set();
+  const groupNames = [];
+  for (const emp of employees) {
+    const s = String(emp['所属名称'] || '').trim();
+    if (s && !deptShozoku.has(s) && !seenG.has(s)) { seenG.add(s); groupNames.push(s); }
+  }
+
+  const deptPrefix = [...deptShozoku][0] || '';
+  const shortOf = name => (deptPrefix && name.startsWith(deptPrefix))
+    ? (name.slice(deptPrefix.length).replace(/^[\s　]+/, '') || name)
+    : name;
+
+  return groupNames.map((fullName, gi) => {
+    const gid = 'g' + (gi + 1);
+    const gmRole = 'gm' + (gi + 1);
+
+    const seenT = new Set();
+    const teamNames = [];
+    for (const emp of employees) {
+      if (String(emp['所属名称'] || '').trim() !== fullName) continue;
+      const t = String(emp['チーム名'] || '').trim();
+      if (t && !seenT.has(t)) { seenT.add(t); teamNames.push(t); }
+    }
+
+    const teams = teamNames.map((tName, ti) => ({
+      tid: gid + '_t' + (ti + 1),
+      name: tName,
+      tlRole: gid + '_tl' + (ti + 1),
+    }));
+
+    return { gid, name: fullName, shortName: shortOf(fullName), gmRole, teams };
+  });
+}
+
+// ============================================================
+// 自動割り当て
+// ============================================================
+function autoAssign(employees) {
+  const defs = buildGroupDefs(employees);
+  const shozokuToGid = {};
+  const shozokuTeamToTid = {};
+  for (const d of defs) {
+    shozokuToGid[d.name] = d.gid;
+    for (const t of d.teams) shozokuTeamToTid[d.name + '\0' + t.name] = t.tid;
+  }
+
+  for (const emp of employees) { emp['_role'] = 'member'; emp['_group'] = null; emp['_team'] = null; }
+
+  // 部長
+  for (const emp of employees) {
+    if (String(emp['役職名称'] || '').trim() === '部長') { emp['_role'] = 'dept_head'; break; }
+  }
+  // 副部長
+  let vpIdx = 1;
+  for (const emp of employees) {
+    if (emp['_role'] !== 'member') continue;
+    if (String(emp['役職名称'] || '').trim() === '副部長' && vpIdx <= 2) {
+      emp['_role'] = 'vp' + vpIdx++; emp['_group'] = null;
+    }
+  }
+  // グループ GM
+  const gmFilled = new Set();
+  for (const d of defs) {
+    for (const priority of ['グループマネージャー', 'チームリーダー']) {
+      if (gmFilled.has(d.gid)) break;
+      for (const emp of employees) {
+        if (emp['_role'] !== 'member') continue;
+        const shozoku = String(emp['所属名称'] || '').trim();
+        const teamName = String(emp['チーム名'] || '').trim();
+        const yaku = String(emp['役職名称'] || '').trim();
+        if (shozoku === d.name && !teamName && yaku === priority) {
+          emp['_role'] = d.gmRole; gmFilled.add(d.gid); break;
+        }
+      }
+    }
+  }
+  // チーム TL
+  const tlFilled = new Set();
+  for (const d of defs) {
+    for (const t of d.teams) {
+      for (const emp of employees) {
+        if (emp['_role'] !== 'member') continue;
+        const shozoku = String(emp['所属名称'] || '').trim();
+        const teamName = String(emp['チーム名'] || '').trim();
+        const yaku = String(emp['役職名称'] || '').trim();
+        if (shozoku === d.name && teamName === t.name && yaku === 'チームリーダー' && !tlFilled.has(t.tid)) {
+          emp['_role'] = t.tlRole; tlFilled.add(t.tid); break;
+        }
+      }
+    }
+  }
+  // 残りメンバー
+  for (const emp of employees) {
+    if (emp['_role'] !== 'member') continue;
+    const shozoku = String(emp['所属名称'] || '').trim();
+    const teamName = String(emp['チーム名'] || '').trim();
+    const gid = shozokuToGid[shozoku] || null;
+    const tid = teamName ? (shozokuTeamToTid[shozoku + '\0' + teamName] || null) : null;
+    emp['_group'] = gid;
+    emp['_team'] = tid;
+  }
+}
+
+// ============================================================
+// computeOrgData
+// ============================================================
+function computeOrgData() {
+  const defs = buildGroupDefs(state.employees);
+  const allTlRoles = defs.flatMap(d => d.teams.map(t => t.tlRole));
+  const allGmRoles = defs.map(d => d.gmRole);
+  const allRoles = [...FIXED_ROLES, ...allGmRoles, ...allTlRoles];
+
+  const assignments = {};
+  const groupMembers = {};
+  const teamMembers = {};
+  for (const d of defs) {
+    groupMembers[d.gid] = [];
+    for (const t of d.teams) teamMembers[t.tid] = [];
+  }
+  const unassigned = [];
+
+  for (const emp of state.employees) {
+    const role = String(emp['_role'] || 'member');
+    if (allRoles.includes(role)) {
+      assignments[role] = emp;
+    } else if (role === 'member') {
+      const gid = emp['_group'];
+      const tid = emp['_team'];
+      if (tid && teamMembers[tid]) teamMembers[tid].push(emp);
+      else if (gid && groupMembers[gid]) groupMembers[gid].push(emp);
+      else unassigned.push(emp);
+    } else {
+      unassigned.push(emp);
+    }
+  }
+  for (const d of defs) {
+    groupMembers[d.gid].sort((a,b) => gradeSortKey(a) - gradeSortKey(b));
+    for (const t of d.teams) teamMembers[t.tid].sort((a,b) => gradeSortKey(a) - gradeSortKey(b));
+  }
+
+  return { dept_name: state.dept_name, pos_labels: {...state.pos_labels}, defs, assignments, groupMembers, teamMembers, unassigned };
+}
+
+// ============================================================
+// render
+// ============================================================
+let orgData = {};
+let dragEmp = null, dragOffX = 0, dragOffY = 0;
+const ghost = document.getElementById('drag-ghost');
+
+function loadOrg() { orgData = computeOrgData(); document.getElementById('main').style.display = ''; render(); }
+function render() { renderDept(); renderVP(); renderGroups(); renderUnassigned(); updateCounts(); }
+
+function makeCard(emp) {
+  const div = document.createElement('div');
+  div.className = 'emp-card';
+  div.style.background = gradeColor(emp);
+  div.dataset.empId = emp['社員番号'];
+  let name = emp['社内呼称'] || emp['社員名称'] || '???';
+  if (name.length > 6) name = name.slice(0,6) + '…';
+  div.innerHTML = `<div class="card-name">${esc(name)}</div><div class="card-grade">${esc(gradeCodeOf(emp))}</div>`;
+  div.addEventListener('mouseenter', e => showTooltip(e, emp));
+  div.addEventListener('mousemove', e => moveTooltip(e));
+  div.addEventListener('mouseleave', hideTooltip);
+  div.addEventListener('mousedown', e => startDrag(e, emp));
+  return div;
+}
+
+function renderDept() {
+  const row = document.getElementById('tier-dept');
+  row.innerHTML = '';
+  row.appendChild(makeSlot('dept_head', orgData.pos_labels?.dept_head || '部長', orgData.assignments?.dept_head));
+  document.getElementById('dept-name').textContent = orgData.dept_name || '部門';
+  document.getElementById('dept-name').ondblclick = () => editDeptName();
+}
+function renderVP() {
+  const row = document.getElementById('tier-vp');
+  row.innerHTML = '';
+  for (const key of ['vp1','vp2']) row.appendChild(makeSlot(key, orgData.pos_labels?.[key] || '副部長', orgData.assignments?.[key]));
+}
+function makeSlot(roleKey, label, emp) {
+  const wrap = document.createElement('div');
+  wrap.className = 'pos-slot';
+  const lbl = document.createElement('div');
+  lbl.className = 'pos-label'; lbl.textContent = label; lbl.title = 'クリックでポジション名を変更';
+  lbl.onclick = () => editPosLabel(roleKey, lbl);
+  wrap.appendChild(lbl);
+  const area = document.createElement('div');
+  area.className = 'slot-area'; area.dataset.drop = roleKey;
+  setupDropZone(area);
+  if (emp) area.appendChild(makeCard(emp)); else area.innerHTML = '<span class="empty-hint">(空)</span>';
+  wrap.appendChild(area);
+  return wrap;
+}
+
+function renderGroups() {
+  const row = document.getElementById('groups-row');
+  row.innerHTML = '';
+  for (const d of (orgData.defs || [])) {
+    const panel = document.createElement('div');
+    panel.className = 'group-panel';
+
+    const hdr = document.createElement('div');
+    hdr.className = 'group-header'; hdr.id = 'group-hdr-' + d.gid;
+    panel.appendChild(hdr);
+
+    // GM 行
+    const gmRow = document.createElement('div'); gmRow.className = 'gm-row';
+    const gmLbl = document.createElement('div'); gmLbl.className = 'gm-label';
+    gmLbl.textContent = orgData.pos_labels?.[d.gmRole] || 'グループマネージャー';
+    gmLbl.onclick = () => editPosLabel(d.gmRole, gmLbl);
+    gmRow.appendChild(gmLbl);
+    const gmSlot = document.createElement('div');
+    gmSlot.className = 'gm-slot'; gmSlot.dataset.drop = d.gmRole;
+    setupDropZone(gmSlot);
+    const gmEmp = orgData.assignments?.[d.gmRole];
+    gmSlot.appendChild(gmEmp ? makeCard(gmEmp) : Object.assign(document.createElement('span'), {className:'empty-hint', textContent:'(空)'}));
+    gmRow.appendChild(gmSlot);
+    panel.appendChild(gmRow);
+
+    // グループ直属メンバー（チームなし）
+    const directMembers = orgData.groupMembers?.[d.gid] || [];
+    if (directMembers.length > 0) {
+      const mArea = document.createElement('div');
+      mArea.className = 'member-area'; mArea.dataset.drop = 'group'; mArea.dataset.dropGid = d.gid;
+      setupDropZone(mArea);
+      directMembers.forEach(emp => mArea.appendChild(makeCard(emp)));
+      panel.appendChild(mArea);
+    }
+
+    // チームセクション
+    for (const t of d.teams) {
+      const sec = document.createElement('div'); sec.className = 'team-section';
+      const tlRow = document.createElement('div'); tlRow.className = 'team-header-row';
+      const tlLbl = document.createElement('div'); tlLbl.className = 'team-label';
+      tlLbl.textContent = t.name;
+      tlLbl.title = 'クリックでチーム名を変更';
+      tlLbl.onclick = () => editTeamLabel(t, tlLbl);
+      tlRow.appendChild(tlLbl);
+      const tlSlot = document.createElement('div');
+      tlSlot.className = 'tl-slot'; tlSlot.dataset.drop = t.tlRole;
+      setupDropZone(tlSlot);
+      const tlEmp = orgData.assignments?.[t.tlRole];
+      tlSlot.appendChild(tlEmp ? makeCard(tlEmp) : Object.assign(document.createElement('span'), {className:'empty-hint', textContent:'(空)'}));
+      tlRow.appendChild(tlSlot);
+      sec.appendChild(tlRow);
+      const tmArea = document.createElement('div');
+      tmArea.className = 'team-member-area'; tmArea.dataset.drop = 'team'; tmArea.dataset.dropTid = t.tid;
+      setupDropZone(tmArea);
+      const tmMembers = orgData.teamMembers?.[t.tid] || [];
+      if (tmMembers.length === 0) tmArea.innerHTML = '<span class="empty-hint" style="padding:2px">ここにドロップ</span>';
+      else tmMembers.forEach(emp => tmArea.appendChild(makeCard(emp)));
+      sec.appendChild(tmArea);
+      panel.appendChild(sec);
+    }
+
+    // グループへのドロップ受け皿
+    const groupDropArea = document.createElement('div');
+    groupDropArea.className = 'member-area'; groupDropArea.dataset.drop = 'group'; groupDropArea.dataset.dropGid = d.gid;
+    groupDropArea.style.minHeight = '28px'; groupDropArea.style.borderTop = '1px dashed #CFD8DC';
+    groupDropArea.innerHTML = '<span class="empty-hint" style="padding:2px;font-size:10px;">グループ直属へドロップ</span>';
+    setupDropZone(groupDropArea);
+    panel.appendChild(groupDropArea);
+
+    row.appendChild(panel);
+  }
+}
+
+function renderUnassigned() {
+  const area = document.getElementById('unassigned-area'); area.innerHTML = '';
+  const list = orgData.unassigned || [];
+  document.getElementById('unassigned-header').textContent = `未配属  ${list.length}名`;
+  if (list.length === 0) area.innerHTML = '<span class="empty-hint" style="padding:4px">未配属者なし</span>';
+  else list.forEach(emp => area.appendChild(makeCard(emp)));
+}
+
+function updateCounts() {
+  let total = 0;
+  for (const d of (orgData.defs || [])) {
+    let cnt = (orgData.groupMembers?.[d.gid] || []).length + (orgData.assignments?.[d.gmRole] ? 1 : 0);
+    for (const t of d.teams) {
+      cnt += (orgData.teamMembers?.[t.tid] || []).length + (orgData.assignments?.[t.tlRole] ? 1 : 0);
+    }
+    total += cnt;
+    const hdr = document.getElementById('group-hdr-' + d.gid);
+    if (hdr) hdr.textContent = `${d.shortName}  ${cnt}名`;
+  }
+  for (const k of ['dept_head','vp1','vp2']) if (orgData.assignments?.[k]) total++;
+  total += (orgData.unassigned || []).length;
+  document.getElementById('total-count').textContent = `総人数: ${total}名`;
+}
+
+// ---- tooltip ----
+function showTooltip(e, emp) {
+  const t = document.getElementById('tooltip');
+  const rows = TOOLTIP_FIELDS.map(f => {
+    const v = emp[f]; if (v === null || v === undefined || v === '') return '';
+    return `<tr><td>${esc(f)}</td><td>${esc(String(v))}</td></tr>`;
+  }).filter(Boolean).join('');
+  t.innerHTML = `<table>${rows}</table>`; t.style.display = 'block'; moveTooltip(e);
+}
+function moveTooltip(e) {
+  const t = document.getElementById('tooltip');
+  let x = e.clientX + 14, y = e.clientY + 10;
+  if (x + 310 > window.innerWidth) x = e.clientX - 315;
+  if (y + t.offsetHeight > window.innerHeight) y = e.clientY - t.offsetHeight - 6;
+  t.style.left = x + 'px'; t.style.top = y + 'px';
+}
+function hideTooltip() { document.getElementById('tooltip').style.display = 'none'; }
+
+// ---- drag & drop ----
+function setupDropZone(el) {
+  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drag-over'); });
+  el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+  el.addEventListener('drop', e => { e.preventDefault(); el.classList.remove('drag-over'); handleDrop(el); });
+}
+function startDrag(e, emp) {
+  e.preventDefault();
+  e.stopPropagation();
+  // 重複登録を防ぐため、既存リスナーを除去してから追加
+  document.removeEventListener('mousemove', onDragMove);
+  document.removeEventListener('mouseup', onDragEnd);
+  dragEmp = emp;
+  const rect = e.currentTarget.getBoundingClientRect();
+  dragOffX = e.clientX - rect.left; dragOffY = e.clientY - rect.top;
+  ghost.style.background = gradeColor(emp);
+  document.getElementById('ghost-name').textContent = (emp['社内呼称'] || emp['社員名称'] || '').slice(0,6);
+  document.getElementById('ghost-grade').textContent = gradeCodeOf(emp);
+  ghost.style.display = 'block';
+  ghost.style.left = (e.clientX - dragOffX) + 'px'; ghost.style.top = (e.clientY - dragOffY) + 'px';
+  document.addEventListener('mousemove', onDragMove);
+  document.addEventListener('mouseup', onDragEnd);
+  hideTooltip();
+}
+function onDragMove(e) {
+  ghost.style.left = (e.clientX - dragOffX) + 'px'; ghost.style.top = (e.clientY - dragOffY) + 'px';
+  document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+  const el = findDropZoneAt(e.clientX, e.clientY); if (el) el.classList.add('drag-over');
+}
+function onDragEnd(e) {
+  document.removeEventListener('mousemove', onDragMove); document.removeEventListener('mouseup', onDragEnd);
+  ghost.style.display = 'none';
+  document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+  if (!dragEmp) return;
+  const el = findDropZoneAt(e.clientX, e.clientY); if (el) handleDrop(el);
+  dragEmp = null;
+}
+function findDropZoneAt(cx, cy) {
+  for (const el of document.elementsFromPoint(cx, cy)) {
+    if (el.dataset && (el.dataset.drop || el.dataset.dropGid || el.dataset.dropTid)) return el;
+  }
+  return null;
+}
+
+function handleDrop(target) {
+  if (!dragEmp || !target) return;
+  const dropType = target.dataset.drop;
+  const dropGid  = target.dataset.dropGid || null;
+  const dropTid  = target.dataset.dropTid || null;
+  // dragEmp はオブジェクト参照なので state.employees 内の同一オブジェクトを直接参照
+  const emp = state.employees.find(e => e === dragEmp);
+  if (!emp) return;
+
+  const defs = buildGroupDefs(state.employees);
+  const allTlRoles = defs.flatMap(d => d.teams.map(t => t.tlRole));
+  const allGmRoles = defs.map(d => d.gmRole);
+  const allRoles = [...FIXED_ROLES, ...allGmRoles, ...allTlRoles];
+
+  if (allRoles.includes(dropType)) {
+    for (const e of state.employees) {
+      if (String(e['_role']) === dropType && String(e['社員番号']) !== String(empId)) {
+        e['_role'] = 'member'; e['_group'] = null; e['_team'] = null;
+      }
+    }
+    emp['_role'] = dropType; emp['_group'] = null; emp['_team'] = null;
+    if (state.pos_labels[dropType]) emp['役職名称'] = state.pos_labels[dropType];
+  } else if (dropType === 'team' && dropTid) {
+    emp['_role'] = 'member'; emp['_team'] = dropTid;
+    const def = defs.find(d => d.teams.some(t => t.tid === dropTid));
+    emp['_group'] = def ? def.gid : null;
+  } else if (dropType === 'group' && dropGid) {
+    emp['_role'] = 'member'; emp['_group'] = dropGid; emp['_team'] = null;
+  } else if (dropType === 'unassigned') {
+    emp['_role'] = 'member'; emp['_group'] = null; emp['_team'] = null;
+  }
+
+  loadOrg();
+  setStatus(`${dragEmp['社内呼称'] || dragEmp['社員名称']} を移動しました`);
+}
+
+// ---- ラベル編集 ----
+function editPosLabel(key, el) {
+  const val = prompt('ポジション名を入力してください:', el.textContent);
+  if (val && val.trim()) { state.pos_labels[key] = val.trim(); loadOrg(); }
+}
+function editDeptName() {
+  const val = prompt('部門名を入力してください:', document.getElementById('dept-name').textContent);
+  if (val && val.trim()) { state.dept_name = val.trim(); loadOrg(); }
+}
+function editTeamLabel(teamDef, el) {
+  const val = prompt('チーム名を入力してください:', el.textContent);
+  if (!val || !val.trim()) return;
+  const newName = val.trim();
+  for (const emp of state.employees) {
+    if (String(emp['_team'] || '') === teamDef.tid || String(emp['_role'] || '') === teamDef.tlRole) {
+      emp['チーム名'] = newName;
+    }
+  }
+  loadOrg();
+}
+
+// ---- 保存 ----
+function saveData() {
+  document.getElementById('save-pw').value = '';
+  document.getElementById('save-pw-confirm').value = '';
+  document.getElementById('save-pw-error').textContent = '';
+  spUpdateSaveDialog();
+  document.getElementById('save-pw-dialog').classList.remove('hidden');
+  setTimeout(() => document.getElementById('save-pw').focus(), 50);
+}
+function closeSaveDialog() {
+  document.getElementById('save-pw-dialog').classList.add('hidden');
+}
+async function execSave() {
+  const pw  = document.getElementById('save-pw').value;
+  const pw2 = document.getElementById('save-pw-confirm').value;
+  const err = document.getElementById('save-pw-error');
+  if (!pw)        { err.textContent = 'パスワードを入力してください。'; return; }
+  if (pw !== pw2) { err.textContent = 'パスワードが一致しません。'; return; }
+  err.textContent = '';
+  try {
+    const encrypted = await encryptJson(JSON.stringify(state, null, 2), pw);
+    const toSP = _sp.isSP && document.getElementById('save-sp-chk').checked;
+    if (toSP) {
+      err.textContent = 'SharePointへ保存中...';
+      await spSaveJson(encrypted);
+      closeSaveDialog();
+      setStatus('SharePoint に 人事基本情報.json（パスワード保護）として保存しました');
+    } else {
+      downloadBlob(encrypted, '人事基本情報.json', 'text/plain;charset=utf-8');
+      closeSaveDialog();
+      setStatus('人事基本情報.json（パスワード保護）としてダウンロードしました');
+    }
+  } catch(e) { err.textContent = '保存エラー: ' + e.message; }
+}
+function downloadBlob(text, filename, mimeType) {
+  const blob = new Blob([text], {type: mimeType});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+function setStatus(msg) { document.getElementById('status-bar').textContent = msg; }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ---- Excel 読み込み ----
+function parseXlsx(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+        if (!rows.length) { reject(new Error('データが見つかりませんでした')); return; }
+        const emps = rows.map(raw => {
+          const emp = {};
+          for (const [k,v] of Object.entries(raw)) emp[k.replace(/[\s\n\r]/g,'')] = v;
+          if (!emp['_role']) emp['_role'] = 'member';
+          if (!('_group' in emp)) emp['_group'] = null;
+          if (!('_team' in emp)) emp['_team'] = null;
+          return emp;
+        });
+        resolve({emps, fileName: file.name});
+      } catch(err) { reject(err); }
+    };
+    reader.onerror = () => reject(new Error('ファイル読み込み失敗'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function applyEmployees(emps) {
+  const defs = buildGroupDefs(emps);
+  const validGids = new Set(defs.map(d => d.gid));
+  const validTids = new Set(defs.flatMap(d => d.teams.map(t => t.tid)));
+  const needsAssign = !emps.some(e => FIXED_ROLES.includes(String(e['_role'])));
+  const hasInvalidGroup = emps.some(e => (e['_group'] !== null && !validGids.has(String(e['_group'])))
+                                      || (e['_team']  !== null && !validTids.has(String(e['_team']))));
+  if (needsAssign || hasInvalidGroup) autoAssign(emps);
+
+  state.employees = emps;
+  const deptEmp = emps.find(e => String(e['役職名称']||'').trim() === '部長');
+  state.dept_name = (deptEmp?.['所属名称']) ? String(deptEmp['所属名称']).trim() : (emps[0]?.['所属名称'] || '');
+  for (const d of defs) { if (!state.pos_labels[d.gmRole]) state.pos_labels[d.gmRole] = 'グループマネージャー'; }
+}
+
+// ---- JSON を開く ----
+let _pendingJsonText = null, _pendingJsonFileName = null;
+
+function onJsonSelected(event) {
+  const file = event.target.files[0]; event.target.value = '';
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const text = e.target.result.replace(/^﻿/, '');
+    if (isEncrypted(text.trim())) {
+      _pendingJsonText = text.trim();
+      _pendingJsonFileName = file.name;
+      document.getElementById('open-pw').value = '';
+      document.getElementById('open-pw-error').textContent = '';
+      document.getElementById('open-pw-filename').textContent = `ファイル: ${file.name}`;
+      document.getElementById('open-pw-dialog').classList.remove('hidden');
+      setTimeout(() => document.getElementById('open-pw').focus(), 50);
+    } else {
+      applyJsonText(text, file.name);
+    }
+  };
+  reader.onerror = () => setStatus('ファイル読み込み失敗');
+  reader.readAsText(file, 'utf-8');
+}
+async function execOpenJson() {
+  const pw  = document.getElementById('open-pw').value;
+  const err = document.getElementById('open-pw-error');
+  if (!pw) { err.textContent = 'パスワードを入力してください。'; return; }
+  try {
+    const text = await decryptJson(_pendingJsonText, pw);
+    closeOpenDialog();
+    applyJsonText(text, _pendingJsonFileName);
+  } catch {
+    err.textContent = 'パスワードが正しくないか、ファイルが破損しています。';
+    document.getElementById('open-pw').select();
+  }
+}
+function closeOpenDialog() {
+  document.getElementById('open-pw-dialog').classList.add('hidden');
+  _pendingJsonText = null; _pendingJsonFileName = null;
+}
+function applyJsonText(text, fileName) {
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed.employees || !Array.isArray(parsed.employees)) { setStatus('エラー: 不正な JSON 形式です'); return; }
+    if (parsed.dept_name) state.dept_name = parsed.dept_name;
+    if (parsed.pos_labels) Object.assign(state.pos_labels, parsed.pos_labels);
+    state.employees = parsed.employees;
+    document.getElementById('open-overlay').classList.add('hidden');
+    loadOrg();
+    setStatus(`${fileName} を読み込みました (${parsed.employees.length}名)`);
+  } catch(e) { setStatus('JSON 読み込みエラー: ' + e.message); }
+}
+
+// ---- xlsx を開く ----
+function onXlsxSelected(event) {
+  const file = event.target.files[0]; event.target.value = '';
+  if (!file) return;
+  parseXlsx(file)
+    .then(({emps, fileName}) => { applyEmployees(emps); document.getElementById('open-overlay').classList.add('hidden'); loadOrg(); setStatus(`${fileName} を読み込みました (${emps.length}名)`); })
+    .catch(err => setStatus('読み込みエラー: ' + err.message));
+}
+
+// ---- 初期化：xlsx → JSON 変換 ----
+function onInitXlsxSelected(event) {
+  const file = event.target.files[0]; event.target.value = '';
+  if (!file) return;
+  parseXlsx(file)
+    .then(({emps, fileName}) => {
+      autoAssign(emps);
+      const defs = buildGroupDefs(emps);
+      const deptEmp = emps.find(e => String(e['役職名称']||'').trim() === '部長');
+      const deptName = (deptEmp?.['所属名称']) ? String(deptEmp['所属名称']).trim() : (emps[0]?.['所属名称'] || '部門');
+      const posLabels = { dept_head:'部長', vp1:'副部長', vp2:'副部長' };
+      for (const d of defs) posLabels[d.gmRole] = 'グループマネージャー';
+      _initData = { dept_name: deptName, pos_labels: posLabels, employees: emps };
+      const teamInfo = defs.map(d => d.teams.length ? `${d.shortName}(${d.teams.length}チーム)` : d.shortName).join('、');
+      document.getElementById('init-msg').innerHTML =
+        `<b>${esc(fileName)}</b> を読み込みました<br>${emps.length}名 / ${defs.length}グループ<br>${esc(teamInfo)}<br><br>JSONをダウンロードするか、そのまま編集を開始できます。`;
+      const suggestedJsonName = fileName.replace(/\.[^.]+$/, '') + '.json';
+      spUpdateInitDialog(suggestedJsonName);
+      document.getElementById('init-progress').classList.remove('hidden');
+    })
+    .catch(err => setStatus('初期化エラー: ' + err.message));
+}
+async function downloadInitJson() {
+  if (!_initData) return;
+  const pw  = document.getElementById('init-pw').value;
+  const pw2 = document.getElementById('init-pw-confirm').value;
+  const err = document.getElementById('init-pw-error');
+  if (!pw)        { err.textContent = 'パスワードを入力してください。'; return; }
+  if (pw !== pw2) { err.textContent = 'パスワードが一致しません。'; return; }
+  err.textContent = '';
+  try {
+    const encrypted = await encryptJson(JSON.stringify(_initData, null, 2), pw);
+    const jsonName = (document.getElementById('init-sp-save-filename').textContent || '人事基本情報.json');
+    const toSP = _sp.isSP && document.getElementById('init-sp-save-chk').checked;
+    if (toSP) {
+      err.textContent = 'SharePointへ保存中...';
+      await spSaveInitJson(encrypted, jsonName);
+      err.textContent = '';
+      setStatus(`SharePoint に ${jsonName}（パスワード保護）として保存しました`);
+    }
+    // ローカルにもダウンロード（SP保存有無に関わらず）
+    downloadBlob(encrypted, jsonName, 'text/plain;charset=utf-8');
+    if (!toSP) setStatus(`${jsonName}（パスワード保護）としてダウンロードしました`);
+  } catch(e) { err.textContent = '保存エラー: ' + e.message; }
+}
+function loadInitData() {
+  if (!_initData) return;
+  state.dept_name = _initData.dept_name;
+  Object.assign(state.pos_labels, _initData.pos_labels);
+  state.employees = _initData.employees;
+  _initData = null;
+  document.getElementById('init-progress').classList.add('hidden');
+  document.getElementById('open-overlay').classList.add('hidden');
+  loadOrg();
+  setStatus(`初期化完了 - ${state.employees.length}名 (未保存 - 保存ボタンで JSON を出力してください)`);
+}
+function closeInitDialog() { document.getElementById('init-progress').classList.add('hidden'); _initData = null; }
+
+// ============================================================
+// SharePoint 連携
+// ============================================================
+
+// HTMファイル自身がSharePointに置かれている場合、window.locationから
+// フォルダのサーバー相対パスとオリジンを取得する
+function spContext() {
+  const loc = window.location;
+  // SharePointのURLパターン: https://tenant.sharepoint.com/sites/xxx/Shared Documents/folder/file.htm
+  const m = loc.pathname.match(/^(.*\/)[^/]+\.htm?$/i);
+  const folderPath = m ? m[1] : null; // 末尾スラッシュ付きサーバー相対パス
+  const isSP = loc.hostname.toLowerCase().includes('sharepoint.com') && folderPath;
+  return { origin: loc.origin, folderPath, isSP };
+}
+
+// SP REST API: フォルダ内のファイル一覧取得
+async function spListFiles(origin, folderPath) {
+  const encoded = encodeURIComponent(folderPath.replace(/\/$/, ''));
+  const apiUrl = `${origin}${folderPath.split('/').slice(0,3).join('/')}/_api/web/GetFolderByServerRelativeUrl('${encoded}')/Files?$select=Name,TimeLastModified&$orderby=TimeLastModified%20desc`;
+  const res = await fetch(apiUrl, {
+    credentials: 'include',
+    headers: { 'Accept': 'application/json;odata=nometadata' }
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  return (json.value || []).filter(f => /\.(json|xlsx?)$/i.test(f.Name));
+}
+
+// SP REST API: ファイルをテキストで取得
+async function spFetchText(origin, folderPath, fileName) {
+  const filePath = folderPath + fileName;
+  const res = await fetch(`${origin}${filePath}`, { credentials: 'include', cache: 'no-cache' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.text();
+}
+
+// SP REST API: ファイルをArrayBufferで取得
+async function spFetchBuffer(origin, folderPath, fileName) {
+  const filePath = folderPath + fileName;
+  const res = await fetch(`${origin}${filePath}`, { credentials: 'include', cache: 'no-cache' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.arrayBuffer();
+}
+
+// SP REST API: テキストファイルをPUTで保存
+async function spPutFile(origin, folderPath, fileName, content) {
+  const sitePath = folderPath.split('/').slice(0, 3).join('/'); // /sites/xxx
+  const encoded = encodeURIComponent(folderPath.replace(/\/$/, ''));
+  const apiUrl = `${origin}${sitePath}/_api/web/GetFolderByServerRelativeUrl('${encoded}')/Files/Add(url='${encodeURIComponent(fileName)}',overwrite=true)`;
+
+  // X-RequestDigest が必要な場合はFormDigest取得
+  let digest = '';
+  try {
+    const dr = await fetch(`${origin}${sitePath}/_api/contextinfo`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Accept': 'application/json;odata=nometadata' }
+    });
+    if (dr.ok) { const dj = await dr.json(); digest = dj.FormDigestValue || ''; }
+  } catch {}
+
+  const headers = { 'Content-Type': 'text/plain; charset=utf-8' };
+  if (digest) headers['X-RequestDigest'] = digest;
+
+  const res = await fetch(apiUrl, { method: 'POST', credentials: 'include', headers, body: content });
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+}
+
+// 起動時: SPコンテキストを検出して一覧を表示
+const _sp = spContext();
+
+async function spInitOpenOverlay() {
+  if (!_sp.isSP) return;
+  const section = document.getElementById('sp-open-section');
+  section.classList.remove('hidden');
+  const listEl = document.getElementById('sp-file-list');
+  try {
+    const files = await spListFiles(_sp.origin, _sp.folderPath);
+    if (!files.length) { listEl.innerHTML = '<div class="sp-loading">このフォルダに .json / .xlsx ファイルはありません</div>'; return; }
+    listEl.innerHTML = '';
+    for (const f of files) {
+      const ext = f.Name.match(/\.(json|xlsx?)$/i)?.[1]?.toLowerCase() || '';
+      const date = f.TimeLastModified ? new Date(f.TimeLastModified).toLocaleString('ja-JP', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+      const div = document.createElement('div');
+      div.className = 'sp-file-item';
+      div.innerHTML = `<span class="sp-file-ext ${ext==='json'?'json':'xlsx'}">${ext.toUpperCase()}</span><span class="sp-file-name">${esc(f.Name)}</span><span class="sp-file-date">${esc(date)}</span>`;
+      div.onclick = () => spOpenFile(f.Name, ext);
+      listEl.appendChild(div);
+    }
+  } catch(e) {
+    listEl.innerHTML = `<div class="sp-loading">一覧取得エラー: ${esc(e.message)}</div>`;
+  }
+}
+
+async function spOpenFile(fileName, ext) {
+  setStatus(`${fileName} を読み込み中...`);
+  try {
+    if (ext === 'json') {
+      const text = (await spFetchText(_sp.origin, _sp.folderPath, fileName)).replace(/^﻿/, '');
+      if (isEncrypted(text.trim())) {
+        _pendingJsonText = text.trim(); _pendingJsonFileName = fileName;
+        document.getElementById('open-pw').value = '';
+        document.getElementById('open-pw-error').textContent = '';
+        document.getElementById('open-pw-filename').textContent = `ファイル: ${fileName}`;
+        document.getElementById('open-pw-dialog').classList.remove('hidden');
+        setTimeout(() => document.getElementById('open-pw').focus(), 50);
+      } else {
+        applyJsonText(text, fileName);
+      }
+    } else {
+      const buf = await spFetchBuffer(_sp.origin, _sp.folderPath, fileName);
+      const wb = XLSX.read(new Uint8Array(buf), {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+      if (!rows.length) throw new Error('データが見つかりませんでした');
+      const emps = rows.map(raw => {
+        const emp = {};
+        for (const [k,v] of Object.entries(raw)) emp[k.replace(/[\s\n\r]/g,'')] = v;
+        if (!emp['_role']) emp['_role'] = 'member';
+        if (!('_group' in emp)) emp['_group'] = null;
+        if (!('_team' in emp)) emp['_team'] = null;
+        return emp;
+      });
+      applyEmployees(emps);
+      document.getElementById('open-overlay').classList.add('hidden');
+      loadOrg();
+      setStatus(`${fileName} を読み込みました (${emps.length}名)`);
+    }
+  } catch(e) { setStatus(`読み込みエラー: ${e.message}`); }
+}
+
+// 保存ダイアログにSP情報を表示
+function spUpdateSaveDialog() {
+  if (!_sp.isSP) return;
+  document.getElementById('save-sp-row').classList.remove('hidden');
+  document.getElementById('save-sp-filename').textContent = '人事基本情報.json';
+}
+
+// 保存時にSPへもアップロード
+async function spSaveJson(encrypted) {
+  if (!_sp.isSP) return;
+  if (!document.getElementById('save-sp-chk').checked) return;
+  await spPutFile(_sp.origin, _sp.folderPath, '人事基本情報.json', encrypted);
+}
+
+// 初期化ダイアログにSP情報を表示
+function spUpdateInitDialog(suggestedName) {
+  if (!_sp.isSP) return;
+  document.getElementById('init-sp-save-row').classList.remove('hidden');
+  document.getElementById('init-sp-save-filename').textContent = suggestedName;
+}
+
+// 初期化時にSPへもアップロード
+async function spSaveInitJson(encrypted, fileName) {
+  if (!_sp.isSP) return;
+  if (!document.getElementById('init-sp-save-chk').checked) return;
+  await spPutFile(_sp.origin, _sp.folderPath, fileName, encrypted);
+}
+
+// ページ読み込み時にSP一覧を取得
+spInitOpenOverlay();
+</script>
+</body>
+</html>

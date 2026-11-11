@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ENEOS Management Dashboard — 統合KPI一覧</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#080C12;--surface:#0F1520;--card:#111826;--border:#1A2840;
+  --text:#E2EAF4;--muted:#6B7FA0;--blue:#4A9EFF;--cyan:#22D3EE;
+  --green:#34D399;--yellow:#FBBF24;--red:#F87171;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Hiragino Sans','Yu Gothic Medium','Meiryo',sans-serif;font-size:13px;line-height:1.5;min-width:1100px;}
+
+.header{background:linear-gradient(135deg,#060D1E,#0C1830 55%,#07112A);border-bottom:1px solid var(--border);padding:14px 28px;display:flex;align-items:center;gap:20px;}
+.eneos-logo{width:92px;height:38px;background:linear-gradient(135deg,#003580,#0051C8);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:900;letter-spacing:1.5px;color:#fff;border:1px solid rgba(74,158,255,0.4);box-shadow:0 0 18px rgba(0,80,200,0.4);flex-shrink:0;}
+.header-titles{flex:1;margin-left:14px;}
+.header-main{font-size:20px;font-weight:700;background:linear-gradient(90deg,#4A9EFF,#22D3EE);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px;}
+.header-sub{font-size:11px;color:var(--muted);margin-top:2px;}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:18px;}
+.period-sel-wrap{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);}
+.period-sel{background:#0B1525;border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;}
+
+.main{padding:16px 28px;}
+.sec-label{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:10px;}
+.sec-label::before{content:'';display:block;width:3px;height:14px;background:var(--blue);border-radius:2px;}
+
+.hd-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:20px;}
+.hd-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:pointer;transition:all .2s;}
+.hd-card:hover{border-color:var(--blue);transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.4);}
+.hd-card-top{height:2px;margin:-10px -12px 8px;width:calc(100%+24px);}
+.hd-co-name{font-size:12px;font-weight:700;margin-bottom:2px;}
+.hd-profit{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;}
+.hd-budget{font-size:10px;color:var(--muted);margin-top:1px;}
+.hd-prog{font-size:11px;font-weight:700;margin-top:3px;}
+.sdot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0;}
+.sdot.g{background:var(--green);box-shadow:0 0 5px var(--green);}
+.sdot.y{background:var(--yellow);box-shadow:0 0 5px var(--yellow);}
+.sdot.r{background:var(--red);box-shadow:0 0 5px var(--red);animation:blink 1.4s infinite;}
+.sdot.nd{background:#2a3858;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+
+.filter-bar{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+.filter-label{font-size:11px;color:var(--muted);margin-right:4px;}
+.filter-btn{padding:4px 14px;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:20px;background:var(--surface);color:var(--muted);cursor:pointer;transition:all .15s;}
+.filter-btn:hover{border-color:var(--blue);color:var(--text);}
+.filter-btn.active{background:var(--blue);border-color:var(--blue);color:#fff;}
+.search-wrap{margin-left:auto;position:relative;}
+.search-input{background:#0B1525;border:1px solid var(--border);color:var(--text);padding:5px 10px 5px 28px;border-radius:6px;font-size:12px;width:200px;}
+.search-input::placeholder{color:#3a5070;}
+.search-icon{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:#3a5070;font-size:12px;pointer-events:none;}
+
+.table-meta{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.row-count{font-size:11px;color:var(--muted);}
+
+.table-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border);}
+.kpi-table{width:100%;border-collapse:collapse;font-size:12px;}
+.kpi-table thead{position:sticky;top:0;z-index:10;}
+.kpi-table th{background:#0A1422;color:var(--muted);padding:9px 12px;text-align:right;font-weight:700;font-size:11px;letter-spacing:.5px;border-bottom:2px solid var(--border);white-space:nowrap;}
+.kpi-table th:nth-child(1),.kpi-table th:nth-child(2),.kpi-table th:nth-child(3),.kpi-table th:nth-child(4),.kpi-table th:nth-child(5){text-align:left;}
+.kpi-table th:nth-child(1){width:90px;}
+.kpi-table th:nth-child(2){width:50px;}
+.kpi-table th:nth-child(3){width:110px;}
+.kpi-table th:nth-child(4){min-width:160px;}
+.kpi-table th:nth-child(5){width:65px;}
+
+.kpi-table td{padding:8px 12px;border-bottom:1px solid #0D1828;text-align:right;color:#B0C4D8;vertical-align:middle;white-space:nowrap;}
+.kpi-table td:nth-child(1),.kpi-table td:nth-child(2),.kpi-table td:nth-child(3){text-align:left;}
+.kpi-table td:nth-child(4){text-align:left;color:var(--text);font-weight:500;}
+.kpi-table td:nth-child(5){text-align:left;color:var(--muted);font-size:10px;}
+
+.kpi-table tbody tr{cursor:pointer;transition:background .1s;}
+.kpi-table tbody tr:hover td{background:#0D1A2E;}
+.kpi-table tbody tr.nodata-row{opacity:.45;cursor:default;}
+.kpi-table tbody tr.nodata-row:hover td{background:transparent;}
+.kpi-table tbody tr.co-group-start td{border-top:2px solid #1E2E48;}
+
+.co-badge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.5px;}
+.num-act{color:var(--cyan);font-variant-numeric:tabular-nums;font-weight:600;}
+.num-bud{color:var(--muted);font-variant-numeric:tabular-nums;}
+.num-diff.pos{color:var(--green);}
+.num-diff.neg{color:var(--red);}
+.num-diff.zero{color:var(--muted);}
+.num-prog.g{color:var(--green);font-weight:700;}
+.num-prog.y{color:var(--yellow);font-weight:700;}
+.num-prog.r{color:var(--red);font-weight:700;}
+.num-prog.nd{color:#3a4a6a;}
+.prog-mini{display:inline-block;width:52px;height:4px;background:#1A2840;border-radius:2px;vertical-align:middle;margin-left:5px;overflow:hidden;}
+.prog-mini-fill{height:100%;border-radius:2px;}
+.prog-mini-fill.g{background:linear-gradient(90deg,#059669,#34D399);}
+.prog-mini-fill.y{background:linear-gradient(90deg,#D97706,#FBBF24);}
+.prog-mini-fill.r{background:linear-gradient(90deg,#DC2626,#F87171);}
+.avg-badge{font-size:9px;background:#1a2840;color:#5577aa;border-radius:3px;padding:1px 4px;margin-left:4px;}
+.low-badge{font-size:9px;background:#1a2840;color:#6B7FA0;border-radius:3px;padding:1px 4px;margin-left:4px;}
+.nodata-cell{color:#2a3858;font-size:11px;}
+
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,5,20,.82);z-index:1000;overflow-y:auto;padding:32px 20px;}
+.modal-overlay.open{display:block;}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:14px;max-width:920px;margin:0 auto;box-shadow:0 24px 80px rgba(0,0,0,.7);}
+.modal-hdr{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+.modal-title{font-size:15px;font-weight:700;}
+.modal-sub{font-size:11px;color:var(--muted);margin-top:3px;}
+.modal-close{background:var(--surface);border:1px solid var(--border);color:var(--muted);cursor:pointer;padding:5px 14px;border-radius:6px;font-size:13px;flex-shrink:0;}
+.modal-close:hover{border-color:var(--red);color:var(--red);}
+.modal-body{padding:22px 24px;}
+.chart-wrap{position:relative;width:100%;}
+.chart-wrap.h280{height:280px;}
+.chart-wrap.h220{height:220px;}
+.chart-wrap canvas{position:absolute;inset:0;width:100%!important;height:100%!important;}
+.chart-row2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px;}
+.chart-sec-lbl{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;}
+.modal-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:18px;}
+.modal-table th{background:#0B1525;color:var(--muted);padding:8px 12px;text-align:right;font-weight:600;}
+.modal-table th:first-child{text-align:left;}
+.modal-table td{padding:7px 12px;border-bottom:1px solid #111C2C;text-align:right;color:#B0C4D8;}
+.modal-table td:first-child{text-align:left;color:var(--muted);}
+.modal-table tr:hover td{background:#0D1A2C;}
+
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:var(--surface);}
+::-webkit-scrollbar-thumb{background:#1E2B3E;border-radius:3px;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="eneos-logo">ENEOS</div>
+  <div class="header-titles">
+    <div class="header-main">Management Dashboard — 統合KPI一覧</div>
+    <div class="header-sub">ENEOS Holdings &nbsp;|&nbsp; 経営管理ダッシュボード &nbsp;|&nbsp; FY2025 月次実績管理（全社一覧）</div>
+  </div>
+  <div class="header-right">
+    <div class="period-sel-wrap">
+      <span>期間：</span>
+      <select class="period-sel" id="periodSel" onchange="onPeriodChange()"></select>
+    </div>
+    <div style="font-size:11px;color:var(--muted)" id="updTime"></div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="sec-label">HD 主要事業会社別 営業利益サマリー（FY累計）</div>
+  <div class="hd-grid" id="hdGrid"></div>
+
+  <div class="sec-label">全社 KPI 統合一覧</div>
+
+  <div class="filter-bar">
+    <span class="filter-label">絞り込み：</span>
+    <button class="filter-btn active" id="fb_ALL"  onclick="setFilter('ALL',this)">全社</button>
+    <button class="filter-btn"        id="fb_HD"   onclick="setFilter('HD',this)">HD</button>
+    <button class="filter-btn"        id="fb_ENEOS" onclick="setFilter('ENEOS',this)">ENEOS</button>
+    <button class="filter-btn"        id="fb_Xplora" onclick="setFilter('Xplora',this)">Xplora</button>
+    <button class="filter-btn"        id="fb_マテリアル" onclick="setFilter('マテリアル',this)">マテリアル</button>
+    <button class="filter-btn"        id="fb_Power" onclick="setFilter('Power',this)">Power</button>
+    <button class="filter-btn"        id="fb_ERE"  onclick="setFilter('ERE',this)">ERE</button>
+    <button class="filter-btn"        id="fb_その他" onclick="setFilter('その他',this)">その他</button>
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input class="search-input" id="searchInput" type="text" placeholder="指標名で検索…" oninput="renderTable()">
+    </div>
+  </div>
+
+  <div class="table-meta">
+    <span class="row-count" id="rowCount"></span>
+    <span style="font-size:10px;color:#2a3858">▶ 行クリックで詳細グラフを表示</span>
+  </div>
+
+  <div class="table-wrap">
+    <table class="kpi-table">
+      <thead>
+        <tr>
+          <th>会社</th>
+          <th>区分</th>
+          <th>カテゴリ</th>
+          <th>指標名</th>
+          <th>単位</th>
+          <th>実績</th>
+          <th>予算</th>
+          <th>差異</th>
+          <th>進捗率</th>
+          <th style="text-align:center">判定</th>
+        </tr>
+      </thead>
+      <tbody id="kpiTbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay" onclick="bgClose(event)">
+  <div class="modal" id="modal">
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-title" id="modalTitle"></div>
+        <div class="modal-sub" id="modalSub"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕ 閉じる</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<script>
+const MONTHS=['2025/4/1','2025/5/1','2025/6/1','2025/7/1','2025/8/1','2025/9/1',
+              '2025/10/1','2025/11/1','2025/12/1','2026/1/1','2026/2/1','2026/3/1'];
+const ML=['4月','5月','6月','7月','8月','9月','10月','11月','12月','1月','2月','3月'];
+
+const CO_COLOR={ENEOS:'#4A9EFF',ERE:'#A78BFA',Power:'#FBBF24',Xplora:'#34D399',マテリアル:'#F472B6',その他:'#22D3EE',HD:'#60A5FA'};
+const CO_BG   ={ENEOS:'rgba(74,158,255,.12)',ERE:'rgba(167,139,250,.12)',Power:'rgba(251,191,36,.10)',Xplora:'rgba(52,211,153,.12)',マテリアル:'rgba(244,114,182,.12)',その他:'rgba(34,211,238,.10)',HD:'rgba(96,165,250,.12)'};
+
+// ===== RAW DATA =====
+const E_PL = {
+  石油:  {act:[624.6,-49.9,280.1,232.7,296.4,112.3,234.5,315.2,422.1,298.2,187.3,352.1], bud:[877.48,184.54,246.40,199.95,213.55,174.39,203.80,198.30,286.40,211.20,192.40,244.60]},
+  ガス:  {act:[4.4,6.9,19.9,3.3,3.6,-2.1,5.1,3.2,8.4,6.1,4.2,7.8], bud:[-0.27,-0.24,9.76,1.93,3.30,2.20,2.50,2.10,3.20,2.80,2.30,3.10]},
+  潤滑油:{act:[21,12,24,25,12,27,17,11,27,20,18,-64], bud:[12.79,12.70,12.84,12.12,12.15,13.40,13.10,13.20,13.50,13.00,12.80,13.20]},
+  インキュ:{act:[-13,-12,-30,-15,-13,-11,-16,-18,-20,-14,-12,-15], bud:[-24,-22,-23,-23,-22,-23,-23,-24,-24,-24,-23,-24]},
+};
+const E_SEL = {
+  白油4品:     {act:[328.09,318.21,332.16,355.60,348.47,340.00,347.00,355.47,434.59,400.00,369.00,380.00], bud:[341.92,332.65,324.21,358.76,357.90,328.72,347.78,385.60,448.84,401.03,379.05,383.04], unit:'万KL'},
+  '産エネ(JET)':{act:[43.33,46.94,44.41,45.16,48.56,42.14,49.00,42.00,50.00,45.00,39.00,48.00], bud:[44.39,48.31,47.06,48.91,48.94,48.04,49.89,47.44,49.05,48.69,46.14,49.16], unit:'万KL'},
+  輸出:       {act:[115,98,95,104,131,152,157,154,173,182,149,135], bud:[159,146,157,161,175,146,120,109,152,182,184,162], unit:'万KL'},
+  化学品:      {act:[45,42,38,41,44,40,44,43.8,44,40,40,39], bud:[47.80,48.20,46.64,47.55,47.20,45.09,45.42,46.32,46.32,49.49,47.28,45.96], unit:'万T'},
+};
+const E_MGN = {
+  白油4品:     {act:[19.1,12.3,17.8,18.2,19.4,16.1,17.9,20.3,21.5,18.7,16.4,19.8], bud:[14.5,14.5,14.5,14.5,14.5,14.5,14.5,14.5,14.5,14.5,14.5,14.5], unit:'円/L'},
+  '産エネ(JET)':{act:[11.0,9.2,12.4,13.1,14.2,10.8,11.5,12.8,13.6,11.2,10.1,12.3], bud:[8.3,8.3,8.3,8.3,8.3,8.3,8.3,8.3,8.3,8.3,8.3,8.3], unit:'円/L'},
+  輸出:       {act:[5.6,3.8,6.2,6.8,7.1,5.3,5.9,6.4,7.2,5.8,4.9,6.1], bud:[4.4,4.4,4.4,4.4,4.4,4.4,4.4,4.4,4.4,4.4,4.4,4.4], unit:'$/B'},
+  化学品:      {act:[62,48.5,65.2,70.1,72.3,55.8,63.4,68.9,74.5,61.2,57.8,66.3], bud:[60,60,60,60,60,60,60,60,60,60,60,60], unit:'$/T'},
+};
+const E_MFG = {
+  'UCL（製油所不稼働ロス率）':{act:[7.0,11.9,11.0,13.6,7.7,5.3,3.44,4.4,6.5,3.2,0.0,1.2], bud:[4.4,4.4,4.4,4.4,4.4,4.4,4.4,4.4,4.4,4.4,4.4,4.4], unit:'%', low:true},
+  'TRIR（社員）': {act:[1.5,2.06,1.37,1.38,1.10,1.96,1.41,1.46,2.40,1.62,2.49,2.49], bud:[1,1,1,1,1,1,1,1,1,1,1,1], unit:'件/100万h', low:true},
+  'TRIR（協力）': {act:[2.1,3.28,2.73,3.15,3.18,3.25,2.98,2.85,2.71,2.82,2.38,2.44], bud:[1,1,1,1,1,1,1,1,1,1,1,1], unit:'件/100万h', low:true},
+  'LTIR（社員）': {act:[0.5,0.34,0.60,0.31,0.24,0.79,0.44,0.38,0.76,0.31,0.88,0.84], bud:[0,0,0,0,0,0,0,0,0,0,0,0], unit:'件/100万h', low:true},
+  'LTIR（協力）': {act:[0.7,1.53,1.24,1.58,1.51,1.41,1.26,1.08,0.95,1.10,0.87,0.87], bud:[0.3,0.3,0.3,0.3,0.3,0.3,0.3,0.3,0.3,0.3,0.3,0.3], unit:'件/100万h', low:true},
+};
+const ERE_PL  = {act:[3.0,1.0,-1.0,10.0,6.0,-8.0,-5.0,-1.0,0.001,4.98,0.74,-19.721], bud:[4,7,-4,6,6,0,0,-1,-4,5,2,-2]};
+const ERE_GEN = {
+  太陽光:  {act:[69.0,66.2,102.8,93.4,87.6,111.5,57.9,52.2,88.3,52.0,54.3,101.8], bud:[71.3,77.1,103.4,88.0,86.5,110.1,66.2,60.3,95.9,54.1,61.2,87.9]},
+  風力:    {act:[46.2,35.8,30.5,25.2,21.6,25.2,25.7,54.9,64.6,80.5,58.9,46.9], bud:[50.6,39.6,31.1,29.3,28.4,31.4,44.3,52.8,70.7,76.5,64.8,63.5]},
+  バイオマス:{act:[15.5,15.9,15.4,15.8,15.0,0.0,14.6,15.5,16.0,16.1,14.5,0.01], bud:[15.3,15.7,15.1,15.6,15.6,11.2,15.7,15.2,15.8,15.8,14.3,4.7]},
+};
+const ENS_PL = {
+  SSBR:       {act:[10.4,8.74,8.90,9.2,8.5,7.8,9.1,10.2,11.5,8.9,9.3,10.8], bud:[4.71,5.96,6.46,6.8,6.2,5.8,6.3,7.0,8.2,6.1,6.5,7.5]},
+  '電池バインダー':{act:[0.33,-0.77,-0.50,0.1,-0.2,0.4,0.2,0.5,0.8,0.3,0.1,0.6], bud:[-0.29,0.25,-0.07,0.2,0.1,0.3,0.1,0.4,0.6,0.2,0.0,0.5]},
+  'ENB・SAS':  {act:[1.87,0.69,2.27,1.8,1.6,2.1,1.7,2.0,2.4,1.9,1.8,2.2], bud:[1.83,1.15,2.21,1.9,1.7,2.0,1.8,1.9,2.3,1.8,1.7,2.1]},
+  タイヤ基盤:  {act:[6.73,5.96,7.84,6.5,7.0,6.8,7.2,6.9,8.1,6.4,6.7,7.5], bud:[4.56,4.63,4.55,4.8,4.7,4.9,5.0,4.8,5.5,4.5,4.7,5.1]},
+  機能性基盤:  {act:[5.88,6.09,5.37,5.7,5.2,4.9,5.6,5.8,6.2,5.1,5.4,5.9], bud:[3.45,3.79,3.51,3.7,3.4,3.6,3.8,3.9,4.2,3.5,3.6,4.0]},
+  関係会社:   {act:[7.77,5.95,4.94,7.76,4.67,7.12,7.53,7.19,8.14,6.00,5.50,5.13], bud:[3.46,4.46,4.13,4.36,4.23,4.64,5.74,4.71,5.53,4.86,5.96,1.70]},
+  本社費:     {act:[-10.7,-8.98,-10.5,-9.8,-10.2,-9.5,-10.0,-10.3,-10.8,-9.7,-9.9,-10.5], bud:[-10.44,-8.54,-10.0,-9.5,-9.8,-9.2,-9.7,-9.9,-10.5,-9.4,-9.6,-10.2]},
+};
+const ENS_SEL = {
+  SSBR:       {act:[14.08,13.66,13.39,12.55,13.74,12.24,15.38,14.37,14.27,15.90,14.60,16.72], bud:[14.59,14.89,14.87,14.66,14.11,14.38,14.67,14.89,14.71,15.26,14.61,15.25]},
+  '電池バインダー':{act:[0.098,0.048,0.075,0.101,0.068,0.093,0.084,0.092,0.069,0.100,0.070,0.103], bud:[0.109,0.117,0.118,0.122,0.117,0.132,0.176,0.184,0.179,0.191,0.185,0.194]},
+  'ENB・SAS':  {act:[6.29,7.02,7.82,6.78,5.67,6.72,8.54,6.20,6.71,6.30,8.04,7.60], bud:[6.32,7.12,7.16,5.63,6.46,5.48,7.98,7.64,5.60,8.06,6.72,7.61]},
+  タイヤ基盤:  {act:[21.03,17.89,21.44,17.05,15.19,23.10,24.78,23.31,22.41,22.60,23.04,19.46], bud:[22.08,20.88,22.09,23.39,21.28,22.68,23.07,22.76,23.06,22.04,22.34,22.98]},
+  機能性基盤:  {act:[15.04,13.12,12.92,13.54,13.07,14.65,16.90,15.11,15.09,13.00,12.82,13.16], bud:[14.54,14.59,14.62,14.38,14.13,15.15,15.17,14.67,15.09,14.53,14.54,13.99]},
+};
+const ENS_OEE = {act:[64.2,92.0,80.4,81.1,85.0,64.0,0.0,0.0,90.28,88.4,91.0,0.0], bud:[89,89,89,89,89,89,89,89,89,89,89,89]};
+const PWR_PL  = {
+  電気:   {act:[10.1,17.4,55.1,38.9,37.9,28.4,31.2,42.1,48.3,35.2,29.8,33.5], bud:[11.4,21.3,21.2,33.1,40.9,26.5,29.8,38.4,45.2,32.8,27.5,31.2]},
+  都市ガス:{act:[-0.4,0.8,0.8,0.2,-0.1,0.3,0.4,0.2,0.6,0.5,0.4,0.3], bud:[-0.1,0.5,0.0,0.0,-0.2,0.1,0.2,0.1,0.4,0.3,0.2,0.2]},
+  VPP:   {act:[1.8,0.4,1.1,2.2,2.0,1.5,1.8,1.6,2.1,1.9,1.7,1.8], bud:[1.3,1.2,0.9,1.4,1.2,1.3,1.5,1.4,1.8,1.6,1.5,1.6]},
+  海外:   {act:[-1.8,-2.0,-2.9,-2.3,-2.6,-2.1,-2.4,-2.2,-2.8,-2.3,-2.1,-2.5], bud:[-1.8,-2.3,-2.9,-2.3,-3.0,-2.2,-2.5,-2.3,-2.9,-2.4,-2.2,-2.6]},
+};
+const PWR_GEN     = {act:[4.7,7.1,9.3,10.5,11.4,9.7,6.5,7.5,8.7,10.8,9.4,8.5], bud:[4.6,6.9,9.8,9.8,10.2,9.1,5.9,7.0,8.9,11.4,8.8,7.6]};
+const PWR_GENCOST = {act:[16.3,12.0,12.8,11.5,11.4,12.0,12.3,11.5,11.6,11.4,12.3,11.16], bud:[15.5,12.3,12.9,12.2,11.8,12.8,13.9,13.1,13.3,12.2,12.6,12.9]};
+const PWR_SEL     = {
+  高圧:{act:[2.3,2.3,3.1,3.5,3.1,3.0,2.7,2.5,3.0,3.2,2.8,2.8], bud:[2.1,2.1,2.4,3.0,2.9,2.7,2.3,2.2,2.9,2.8,2.6,2.6]},
+  低圧:{act:[2.1,1.9,3.1,3.6,3.8,3.0,2.3,2.6,3.6,4.1,4.1,2.2], bud:[2.1,2.1,2.2,3.3,3.7,3.0,2.1,2.4,3.7,4.2,4.2,2.1]},
+};
+const PWR_PRICE   = {
+  高圧:{act:[19.4,19.3,18.9,17.5,16.4,19.7,17.7,17.8,17.0,16.6,16.9,15.9], bud:[18.0,18.0,18.1,18.3,18.1,18.0,17.9,18.2,18.9,18.7,18.3,17.7]},
+  低圧:{act:[21.0,19.8,20.2,18.1,18.4,19.0,18.6,18.9,18.8,18.8,18.8,20.1], bud:[19.6,19.6,19.6,19.3,19.4,19.3,19.5,19.5,19.4,19.6,19.6,18.7]},
+};
+const XPL_PL   = {act:[42,41,49,51,51,39,41,41,102,21,38,-8], bud:[47,47,48,47,48,48,55,55,55,55,55,55]};
+const XPL_PROD = {act:[97.8,97.5,93.8,93.3,93.5,93.0,93.5,93.4,93.1,93.1,92.4,91.9], bud:[97.6,97.6,97.6,97.6,97.6,97.6,97.6,97.6,97.6,97.6,97.6,97.6]};
+const OTHER_PL = {act:[127,50,18,48,47,99,55,63,177,43,60,125], bud:[74,74,74,74,74,74,74,74,74,74,74,74]};
+
+// ===== 追加データ（ダミーデータ.xlsx） =====
+const COST = {
+  ENEOS:    {act:[125,115,100,119,118,121,100,90,100,100,115,110], bud:[120,120,120,120,120,120,110,110,110,110,110,110]},
+  ERE:      {act:[22,24,24,22,25,21,24,20,26,27,21,26], bud:[25,25,25,25,25,25,30,30,30,30,30,30]},
+  マテリアル:{act:[45,31,45,34,30,35,43,31,44,38,31,41], bud:[40,40,40,40,40,40,40,40,40,40,40,40]},
+  Power:    {act:[47,43,40,46,50,47,41,41,40,49,49,50], bud:[50,50,50,50,50,50,45,45,45,45,45,45]},
+  Xplora:   {act:[69,62,68,70,55,68,59,65,61,57,56,63], bud:[60,60,60,60,60,60,70,70,70,70,70,70]},
+  その他:   {act:[18,16,15,17,16,18,15,14,17,16,15,18], bud:[18,18,18,18,18,18,18,18,18,18,18,18]},
+};
+const E_OPER = {
+  TOP:   {act:[92,94,90,94,94,85,87,94,93,95,95,93], bud:[85,89,88,91,94,90,95,89,85,94,95,90]},
+  FCC:   {act:[87,89,85,89,87,87,90,86,86,89,88,85], bud:[91,86,85,90,87,86,85,91,88,90,91,88]},
+  RDS:   {act:[88,85,87,89,86,90,93,89,85,85,91,91], bud:[87,92,95,87,93,91,85,90,88,93,86,86]},
+  Coker: {act:[88,90,87,95,91,94,87,86,86,92,93,88], bud:[89,85,91,85,94,95,85,95,87,86,86,95]},
+  PX:    {act:[93,89,95,95,92,86,92,95,86,92,89,91], bud:[86,88,91,86,86,89,85,90,94,88,87,95]},
+  SC:    {act:[93,90,89,85,94,94,88,92,94,94,90,86], bud:[92,91,87,87,89,93,95,88,89,94,92,85]},
+};
+const E_EII   = {act:[0.99,0.96,0.95,1.01,0.94,1.02,0.94,0.93,1.03,0.92,1.02,1.02], bud:[0.98,0.93,0.99,0.91,0.91,0.97,0.9,1.01,0.98,1.05,1.0,0.93]};
+const E_SYLD  = {act:[0.87,0.88,0.81,0.81,0.89,0.89,0.8,0.84,0.8,0.9,0.88,0.81], bud:[0.85,0.82,0.83,0.9,0.9,0.85,0.84,0.81,0.82,0.82,0.81,0.81]};
+const E_OLOSS = {act:[0.1,0.13,0.09,0.14,0.14,0.2,0.15,0.2,0.06,0.16,0.18,0.07], bud:[0.13,0.1,0.09,0.07,0.09,0.12,0.07,0.18,0.05,0.2,0.11,0.06]};
+const ERE_SEGPL = {
+  太陽光:   {act:[10,6,6,5,10,9,7,9,10,8,10,6], bud:[8,7,7,6,6,10,9,9,9,7,6,8]},
+  風力:     {act:[9,10,5,8,8,6,6,10,5,8,7,8], bud:[6,10,5,10,5,9,10,9,6,10,5,9]},
+  バイオマス:{act:[9,8,5,7,5,9,7,10,8,8,8,7], bud:[6,8,9,9,8,9,6,6,5,7,7,9]},
+};
+const ENS_RELCO = {
+  EMIX:      {act:[55,61,68,61,50,64,56,62,68,53,63,50], bud:[70,56,56,57,55,64,68,53,57,60,65,61]},
+  EMTR:      {act:[58,50,63,55,58,50,64,62,58,64,53,66], bud:[35,30,31,34,32,30,31,33,35,30,35,34]},
+  'TMC/ANCI':{act:[12,11,15,14,12,10,11,12,13,13,14,12], bud:[15,14,13,12,10,15,13,12,11,14,15,13]},
+  'ENS_その他':{act:[12,11,12,12,11,14,14,10,12,12,11,10], bud:[12,12,13,15,11,14,11,12,12,12,15,12]},
+};
+const PWR_UCL_DATA = {act:[4.2,4.0,2.6,3.0,2.9,5.3,5.9,3.1,5.6,5.6,4.1,2.9], bud:[4.2,3.9,4.9,5.0,3.7,4.5,5.6,2.5,4.5,4.2,3.5,3.5]};
+const PWR_MARGIN = {
+  低圧:{act:[6.6,5.9,5.5,5.8,7.0,5.4,5.8,5.8,5.6,6.4,5.9,5.2], bud:[6.6,6.6,6.6,6.6,6.6,6.6,6.6,6.6,6.6,6.6,6.6,6.6]},
+  高圧:{act:[6.6,5.9,5.5,5.8,7.0,5.4,5.8,5.8,5.6,6.4,5.9,5.2], bud:[6.6,6.6,6.6,6.6,6.6,6.6,6.6,6.6,6.6,6.6,6.6,6.6]},
+};
+const XPL_PROD_LOC = {
+  マレーシア:      {act:[1.1,1.9,1.7,1.1,1.0,1.2,1.7,1.6,1.2,1.2,1.3,1.2], bud:[1.5,1.2,1.1,1.0,1.0,2.0,2.0,1.1,1.9,1.7,1.6,1.4]},
+  ベトナム:        {act:[1.8,1.2,1.2,1.8,1.6,1.7,1.5,1.6,1.3,1.9,1.4,1.5], bud:[1.8,1.3,1.9,1.6,1.6,1.0,1.6,1.8,2.0,1.8,1.2,1.0]},
+  'PN CCS':       {act:[2.0,1.4,1.7,1.0,1.9,1.9,1.6,1.1,1.5,1.6,1.2,1.4], bud:[1.9,1.0,1.3,1.0,2.0,1.4,1.1,1.1,1.4,2.0,1.8,1.5]},
+  中条:           {act:[1.5,2.0,1.6,2.0,1.0,1.1,1.3,1.7,1.3,1.2,1.7,1.8], bud:[1.0,1.5,2.0,1.2,1.7,1.0,1.8,1.6,1.5,1.7,1.4,2.0]},
+  USA:            {act:[1.0,1.0,1.2,1.7,1.6,1.7,1.9,1.3,1.3,1.6,1.5,1.4], bud:[1.5,1.2,2.0,1.0,1.1,1.1,2.0,1.8,1.0,1.3,1.3,1.6]},
+  パプアニューギニア:{act:[1.3,1.8,1.7,1.8,1.1,1.4,1.1,1.6,1.7,1.9,1.8,2.0], bud:[1.8,1.3,1.4,1.4,2.0,1.2,1.6,1.0,2.0,2.0,1.2,1.7]},
+  インドネシア:    {act:[1.3,1.4,1.5,1.3,1.7,1.6,1.0,1.3,2.0,1.2,1.5,1.4], bud:[2.0,1.8,2.0,1.4,1.3,1.2,1.7,1.8,1.9,1.2,1.9,1.1]},
+  アブダビ:        {act:[1.4,1.6,1.7,1.6,1.6,2.0,1.2,1.3,1.8,1.6,1.1,1.3], bud:[1.4,1.7,1.4,1.7,2.0,1.4,1.0,1.4,1.0,1.3,1.0,1.3]},
+  合同石油:        {act:[1.7,1.7,1.9,1.7,1.7,1.0,1.8,1.6,1.3,1.7,1.9,1.5], bud:[1.7,1.1,1.9,1.8,1.8,1.1,1.7,1.2,1.8,1.5,1.6,1.9]},
+};
+
+// ===== HELPERS =====
+function calcProg(act,bud,low=false){
+  if(bud==null||isNaN(bud)) return NaN;
+  if(bud===0) return act>0?110:(act===0?100:0);
+  if(low){
+    if(act===0&&bud>0) return 110;
+    if(act===0&&bud===0) return 100;
+    if(act<0) return NaN;
+    return (bud/act)*100;
+  }
+  if(bud<0&&act<=0) return (bud/act)*100;
+  if(bud<0&&act>0)  return 110;
+  return (act/bud)*100;
+}
+function sig(p){ if(isNaN(p)||p==null) return 'nd'; return p>=100?'g':p>=80?'y':'r'; }
+function sigLabel(s){ return s==='g'?'◎ 良好':s==='y'?'△ 注意':s==='nd'?'－':'✕ 要対策'; }
+function sigColor(s){ return s==='g'?'var(--green)':s==='y'?'var(--yellow)':s==='nd'?'var(--muted)':'var(--red)'; }
+function fmt(n,d=1){ return n==null||isNaN(n)?'-':n.toLocaleString('ja-JP',{minimumFractionDigits:d,maximumFractionDigits:d}); }
+function fmtP(n){ if(n==null||isNaN(n)) return '-'; return fmt(n,1)+'%'; }
+function cumSum(arr,period){ const idx=MONTHS.indexOf(period); return arr.slice(0,idx+1).reduce((s,v)=>s+(v||0),0); }
+function kpiProg(actArr,budArr,period,low=false){
+  const a=cumSum(actArr,period), b=cumSum(budArr,period);
+  return {act:a,bud:b,prog:calcProg(a,b,low)};
+}
+function kpiAvg(actArr,budArr,period,low=false){
+  const idx=MONTHS.indexOf(period)+1;
+  const as=actArr.slice(0,idx).filter(v=>v!==0&&!isNaN(v));
+  const bs=budArr.slice(0,idx).filter(v=>v!==0&&!isNaN(v));
+  const a=as.length?as.reduce((s,v)=>s+v,0)/as.length:0;
+  const b=bs.length?bs.reduce((s,v)=>s+v,0)/bs.length:0;
+  return {act:a,bud:b,prog:calcProg(a,b,low)};
+}
+
+let PERIOD='2026/3/1';
+let CUR_FILTER='ALL';
+let CHARTS={};
+
+function companyProfit(co,period){
+  let actArr,budArr;
+  if(co==='ENEOS'){
+    actArr=MONTHS.map((_,i)=>Object.values(E_PL).reduce((s,v)=>s+(v.act[i]||0),0));
+    budArr=MONTHS.map((_,i)=>Object.values(E_PL).reduce((s,v)=>s+(v.bud[i]||0),0));
+  } else if(co==='ERE'){
+    actArr=ERE_PL.act; budArr=ERE_PL.bud;
+  } else if(co==='マテリアル'){
+    actArr=MONTHS.map((_,i)=>Object.values(ENS_PL).reduce((s,v)=>s+(v.act[i]||0),0));
+    budArr=MONTHS.map((_,i)=>Object.values(ENS_PL).reduce((s,v)=>s+(v.bud[i]||0),0));
+  } else if(co==='Power'){
+    actArr=MONTHS.map((_,i)=>Object.values(PWR_PL).reduce((s,v)=>s+(v.act[i]||0),0));
+    budArr=MONTHS.map((_,i)=>Object.values(PWR_PL).reduce((s,v)=>s+(v.bud[i]||0),0));
+  } else if(co==='Xplora'){
+    actArr=XPL_PL.act; budArr=XPL_PL.bud;
+  } else {
+    actArr=OTHER_PL.act; budArr=OTHER_PL.bud;
+  }
+  const a=cumSum(actArr,period), b=cumSum(budArr,period), p=calcProg(a,b);
+  return {act:a,bud:b,prog:p,s:sig(p),actArr,budArr};
+}
+
+// ===== BUILD ALL KPI ROWS =====
+function buildAllKpis(){
+  const R=[];
+  function row(id,co,sec,cat,name,unit,actArr,budArr,low,avg,nodata){
+    R.push({id,co,sec,cat,name,unit,actArr:actArr||null,budArr:budArr||null,low:!!low,avg:!!avg,nodata:!!nodata});
+  }
+
+  // HD
+  const hdCos=['ENEOS','ERE','Power','Xplora','マテリアル','その他'];
+  const hdD=hdCos.map(c=>companyProfit(c,PERIOD));
+  const hdActArr=MONTHS.map((_,i)=>hdD.reduce((s,d)=>s+(d.actArr[i]||0),0));
+  const hdBudArr=MONTHS.map((_,i)=>hdD.reduce((s,d)=>s+(d.budArr[i]||0),0));
+  row('HD_total','HD','損益','営業利益','HD合計','億円',hdActArr,hdBudArr);
+  {
+    const costCos=['ENEOS','ERE','マテリアル','Power','Xplora'];
+    const hdCostActArr=MONTHS.map((_,i)=>costCos.reduce((s,k)=>s+(COST[k]?COST[k].act[i]:0),0));
+    const hdCostBudArr=MONTHS.map((_,i)=>costCos.reduce((s,k)=>s+(COST[k]?COST[k].bud[i]:0),0));
+    row('HD_COST','HD','損益','経費','HD合計','億円',hdCostActArr,hdCostBudArr,true,false);
+  }
+
+  // ENEOS
+  const ePlActArr=MONTHS.map((_,i)=>Object.values(E_PL).reduce((s,v)=>s+v.act[i],0));
+  const ePlBudArr=MONTHS.map((_,i)=>Object.values(E_PL).reduce((s,v)=>s+v.bud[i],0));
+  row('E_PL_total','ENEOS','損益','営業利益','合計','億円',ePlActArr,ePlBudArr);
+  Object.entries(E_PL).forEach(([k,v])=>row('E_PL_'+k,'ENEOS','損益','事業別利益',k,'億円',v.act,v.bud));
+  Object.entries(E_SEL).forEach(([k,v])=>row('E_SEL_'+k,'ENEOS','販売','販売量',k,v.unit,v.act,v.bud));
+  Object.entries(E_MGN).forEach(([k,v])=>row('E_MGN_'+k,'ENEOS','販売','マージン',k,v.unit,v.act,v.bud,false,true));
+  Object.entries(E_MFG).forEach(([k,v])=>row('E_MFG_'+k,'ENEOS','製造','安全指標',k,v.unit,v.act,v.bud,true,true));
+  // 経費
+  row('E_COST','ENEOS','損益','経費','合計','億円',COST.ENEOS.act,COST.ENEOS.bud,true,false);
+  // 装置稼働率
+  Object.entries(E_OPER).forEach(([k,v])=>row('E_OPER_'+k,'ENEOS','製造','装置稼働率',k,'%',v.act,v.bud,false,true));
+  // EII / Salable yield / オイルロス
+  row('E_EII','ENEOS','製造','EII','月次平均','',E_EII.act,E_EII.bud,true,true);
+  row('E_SYLD','ENEOS','製造','Salable yield','月次平均','%',E_SYLD.act,E_SYLD.bud,false,true);
+  row('E_OLOSS','ENEOS','製造','オイルロス','月次平均','%',E_OLOSS.act,E_OLOSS.bud,true,true);
+
+  // ERE
+  row('ERE_PL_total','ERE','損益','営業利益','合計','億円',ERE_PL.act,ERE_PL.bud);
+  row('ERE_COST','ERE','損益','経費','合計','億円',COST.ERE.act,COST.ERE.bud,true,false);
+  Object.entries(ERE_SEGPL).forEach(([k,v])=>row('ERE_SEGPL_'+k,'ERE','損益','事業別利益',k,'億円',v.act,v.bud));
+  Object.entries(ERE_GEN).forEach(([k,v])=>row('ERE_GEN_'+k,'ERE','製造','発電量',k,'GWh',v.act,v.bud));
+
+  // マテリアル
+  const ensActArr=MONTHS.map((_,i)=>Object.values(ENS_PL).reduce((s,v)=>s+v.act[i],0));
+  const ensBudArr=MONTHS.map((_,i)=>Object.values(ENS_PL).reduce((s,v)=>s+v.bud[i],0));
+  row('ENS_PL_total','マテリアル','損益','営業利益','合計','億円',ensActArr,ensBudArr);
+  row('ENS_COST','マテリアル','損益','経費','合計','億円',COST.マテリアル.act,COST.マテリアル.bud,true,false);
+  Object.entries(ENS_PL).forEach(([k,v])=>row('ENS_PL_'+k,'マテリアル','損益','事業別利益',k,'億円',v.act,v.bud));
+  Object.entries(ENS_RELCO).forEach(([k,v])=>row('ENS_RELCO_'+k,'マテリアル','損益','関係会社利益',k,'億円',v.act,v.bud));
+  Object.entries(ENS_SEL).forEach(([k,v])=>row('ENS_SEL_'+k,'マテリアル','販売','販売量',k,'KT',v.act,v.bud));
+  row('ENS_OEE','マテリアル','製造','OEE','月次平均（EMSR）','%',ENS_OEE.act,ENS_OEE.bud,false,true);
+
+  // Power
+  const pwrActArr=MONTHS.map((_,i)=>Object.values(PWR_PL).reduce((s,v)=>s+v.act[i],0));
+  const pwrBudArr=MONTHS.map((_,i)=>Object.values(PWR_PL).reduce((s,v)=>s+v.bud[i],0));
+  row('PWR_PL_total','Power','損益','営業利益','合計','億円',pwrActArr,pwrBudArr);
+  row('PWR_COST','Power','損益','経費','合計','億円',COST.Power.act,COST.Power.bud,true,false);
+  Object.entries(PWR_PL).forEach(([k,v])=>row('PWR_PL_'+k,'Power','損益','事業別利益',k,'億円',v.act,v.bud));
+  row('PWR_GEN','Power','製造','発電量','合計','億kwh',PWR_GEN.act,PWR_GEN.bud);
+  row('PWR_GENCOST','Power','製造','発電費用','平均単価','円/kwh',PWR_GENCOST.act,PWR_GENCOST.bud,true,true);
+  row('PWR_UCL','Power','製造','UCL','五井/川天/室蘭バイオマス','%',PWR_UCL_DATA.act,PWR_UCL_DATA.bud,true,true);
+  Object.entries(PWR_SEL).forEach(([k,v])=>row('PWR_SEL_'+k,'Power','販売','販売量',k,'億kwh',v.act,v.bud));
+  Object.entries(PWR_PRICE).forEach(([k,v])=>row('PWR_PRICE_'+k,'Power','販売','売価',k,'円/kwh',v.act,v.bud,false,true));
+  Object.entries(PWR_MARGIN).forEach(([k,v])=>row('PWR_MARGIN_'+k,'Power','販売','限界利益',k,'円/kwh',v.act,v.bud,false,true));
+
+  // Xplora
+  row('XPL_PL','Xplora','損益','営業利益','合計','億円',XPL_PL.act,XPL_PL.bud);
+  row('XPL_COST','Xplora','損益','経費','合計','億円',COST.Xplora.act,COST.Xplora.bud,true,false);
+  Object.entries(XPL_PROD_LOC).forEach(([k,v])=>row('XPL_LOC_'+k,'Xplora','製造','生産量',k,'千BOED',v.act,v.bud,false,true));
+
+  // その他
+  row('OTH_PL','その他','損益','営業利益','合計','億円',OTHER_PL.act,OTHER_PL.bud);
+  row('OTH_COST','その他','損益','経費','合計','億円',COST.その他.act,COST.その他.bud,true,false);
+
+  return R;
+}
+
+function calcRow(r){
+  if(r.nodata||!r.actArr||r.actArr.length===0) return {act:NaN,bud:NaN,prog:NaN,s:'nd'};
+  if(r.id==='ENS_OEE'){
+    const idx=MONTHS.indexOf(PERIOD)+1;
+    const as=r.actArr.slice(0,idx).filter(v=>v>0);
+    const a=as.length?as.reduce((s,v)=>s+v,0)/as.length:0;
+    const b=r.budArr[0];
+    const p=calcProg(a,b,false); return {act:a,bud:b,prog:p,s:sig(p)};
+  }
+  if(r.avg){
+    const res=kpiAvg(r.actArr,r.budArr,PERIOD,r.low);
+    return {...res,s:sig(res.prog)};
+  }
+  const res=kpiProg(r.actArr,r.budArr,PERIOD,r.low);
+  return {...res,s:sig(res.prog)};
+}
+
+// ===== HD GRID =====
+function renderHDGrid(){
+  const cos=['ENEOS','Xplora','マテリアル','Power','ERE','その他'];
+  const hdD=cos.map(c=>companyProfit(c,PERIOD));
+  const totalAct=hdD.reduce((s,d)=>s+d.act,0);
+  const totalBud=hdD.reduce((s,d)=>s+d.bud,0);
+  const tp=calcProg(totalAct,totalBud), ts=sig(tp);
+
+  let html=`<div class="hd-card" onclick="setFilterById('ALL')">
+    <div class="hd-card-top" style="background:linear-gradient(90deg,#60A5FA,#60A5FA44)"></div>
+    <div class="hd-co-name" style="color:#60A5FA">HD 合計</div>
+    <div class="hd-profit" style="color:${sigColor(ts)}">${fmt(totalAct)}<span style="font-size:10px;color:var(--muted);margin-left:3px">億円</span></div>
+    <div class="hd-budget">予算 ${fmt(totalBud)} 億円</div>
+    <div class="hd-prog" style="color:${sigColor(ts)}">${fmtP(tp)} <span class="sdot ${ts}"></span></div>
+  </div>`;
+  html+=cos.map((co,ci)=>{
+    const d=hdD[ci], c=CO_COLOR[co];
+    return `<div class="hd-card" onclick="setFilterById('${co}')">
+      <div class="hd-card-top" style="background:linear-gradient(90deg,${c},${c}44)"></div>
+      <div class="hd-co-name" style="color:${c}">${co}</div>
+      <div class="hd-profit" style="color:${sigColor(d.s)}">${fmt(d.act)}<span style="font-size:10px;color:var(--muted);margin-left:3px">億円</span></div>
+      <div class="hd-budget">予算 ${fmt(d.bud)} 億円</div>
+      <div class="hd-prog" style="color:${sigColor(d.s)}">${fmtP(d.prog)} <span class="sdot ${d.s}"></span></div>
+    </div>`;
+  }).join('');
+  document.getElementById('hdGrid').innerHTML=html;
+}
+
+// ===== TABLE =====
+function renderTable(){
+  const query=(document.getElementById('searchInput').value||'').trim().toLowerCase();
+  const all=buildAllKpis();
+  const SEC_ORDER=['損益','販売','製造'];
+  const COS_ORDER=['HD','ENEOS','Xplora','マテリアル','Power','ERE','その他'];
+  const rows=all.filter(r=>{
+    if(CUR_FILTER!=='ALL'&&r.co!==CUR_FILTER) return false;
+    if(query&&!(r.name+r.cat+r.co).toLowerCase().includes(query)) return false;
+    return true;
+  }).sort((a,b)=>{
+    const coIdx=x=>{const i=COS_ORDER.indexOf(x); return i<0?99:i;};
+    const secIdx=x=>{const i=SEC_ORDER.indexOf(x); return i<0?99:i;};
+    const ci=coIdx(a.co)-coIdx(b.co);
+    if(ci!==0) return ci;
+    const si=secIdx(a.sec)-secIdx(b.sec);
+    if(si!==0) return si;
+    return a.cat.localeCompare(b.cat,'ja');
+  });
+
+  document.getElementById('rowCount').textContent=rows.length+' 件表示中（全 '+all.length+' 件）';
+
+  let prevCo='';
+  document.getElementById('kpiTbody').innerHTML=rows.length?rows.map(r=>{
+    const isFirst=r.co!==prevCo; prevCo=r.co;
+    const {act,bud,prog,s}=calcRow(r);
+    const diff=(!isNaN(act)&&!isNaN(bud))?act-bud:NaN;
+    const bw=Math.min(Math.max(isNaN(prog)?0:prog,0),115);
+    const c=CO_COLOR[r.co]||'#4A9EFF', bg=CO_BG[r.co]||'transparent';
+    const badges=(r.avg?'<span class="avg-badge">平均</span>':'')+(r.low?'<span class="low-badge">低↓良</span>':'');
+    const coCell='<span class="co-badge" style="background:'+bg+';color:'+c+';border:1px solid '+c.replace(')',',0.3)').replace('rgb','rgba')+'">'+r.co+'</span>';
+
+    if(r.nodata){
+      return '<tr class="nodata-row'+(isFirst?' co-group-start':'')+'"><td>'+coCell+'</td><td>'+r.sec+'</td><td>'+r.cat+'</td><td>'+r.name+'</td><td></td><td class="nodata-cell" colspan="5">データなし（CSV未収録）</td></tr>';
+    }
+    const diffCls=isNaN(diff)?'zero':diff>0?'pos':diff<0?'neg':'zero';
+    return '<tr class="'+(isFirst?'co-group-start':'')+'" onclick="openModal(\''+r.id+'\')">'
+      +'<td>'+coCell+'</td>'
+      +'<td>'+r.sec+'</td>'
+      +'<td>'+r.cat+'</td>'
+      +'<td>'+r.name+badges+'</td>'
+      +'<td>'+r.unit+'</td>'
+      +'<td class="num-act">'+fmt(act)+'</td>'
+      +'<td class="num-bud">'+fmt(bud)+'</td>'
+      +'<td class="num-diff '+diffCls+'">'+(isNaN(diff)?'-':fmt(diff))+'</td>'
+      +'<td><span class="num-prog '+s+'">'+fmtP(prog)+'</span>'
+        +'<span class="prog-mini"><span class="prog-mini-fill '+s+'" style="width:'+bw+'%"></span></span></td>'
+      +'<td style="text-align:center"><span class="sdot '+s+'" style="margin-right:4px"></span>'
+        +'<span style="font-size:10px;color:'+sigColor(s)+';font-weight:600">'+sigLabel(s)+'</span></td>'
+      +'</tr>';
+  }).join(''):'<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:24px">該当する指標がありません</td></tr>';
+}
+
+// ===== FILTER =====
+function setFilter(co,btn){
+  CUR_FILTER=co;
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  renderTable();
+}
+function setFilterById(co){
+  CUR_FILTER=co;
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  const id='fb_'+co;
+  const btn=document.getElementById(id);
+  if(btn) btn.classList.add('active');
+  renderTable();
+}
+
+// ===== PERIOD =====
+function initPeriodSel(){
+  const sel=document.getElementById('periodSel');
+  MONTHS.forEach(m=>{
+    const p=m.split('/');
+    const opt=document.createElement('option');
+    opt.value=m;
+    opt.textContent=p[0]+'年'+p[1]+'月（〜'+p[1]+'月 累計）';
+    if(m===PERIOD) opt.selected=true;
+    sel.appendChild(opt);
+  });
+}
+function onPeriodChange(){ PERIOD=document.getElementById('periodSel').value; renderHDGrid(); renderTable(); }
+
+// ===== MODAL =====
+function destroyCharts(){ Object.values(CHARTS).forEach(c=>c.destroy()); CHARTS={}; }
+
+function openModal(id){
+  destroyCharts();
+  const row=buildAllKpis().find(r=>r.id===id);
+  if(!row||row.nodata||!row.actArr||row.actArr.length===0) return;
+  document.getElementById('modalTitle').textContent=row.co+' ▸ '+row.cat+' ▸ '+row.name;
+  document.getElementById('modalSub').textContent=row.sec+' / '+row.unit+' / FY2025 月次推移';
+  renderModalContent(row);
+  document.getElementById('modalOverlay').classList.add('open');
+}
+function closeModal(){ document.getElementById('modalOverlay').classList.remove('open'); destroyCharts(); }
+function bgClose(e){ if(e.target===document.getElementById('modalOverlay')) closeModal(); }
+
+const COPT={responsive:true,maintainAspectRatio:false,
+  plugins:{legend:{labels:{color:'#8aaac8',font:{size:11}}}},
+  scales:{x:{ticks:{color:'#5577aa',font:{size:10}},grid:{color:'#121E2E'}},
+          y:{ticks:{color:'#5577aa',font:{size:10}},grid:{color:'#121E2E'}}}};
+function mkCOPT(ex){ return JSON.parse(JSON.stringify(Object.assign({},COPT,ex||{}))); }
+
+function renderModalContent(row){
+  const body=document.getElementById('modalBody');
+  const actArr=row.actArr, budArr=row.budArr;
+  const color=CO_COLOR[row.co]||'#4A9EFF';
+  const progs=MONTHS.map((_,i)=>calcProg(actArr[i],budArr[i],row.low));
+  let ca=0,cb=0;
+  const cumA=actArr.map(v=>{ca+=v;return ca;});
+  const cumB=budArr.map(v=>{cb+=v;return cb;});
+
+  body.innerHTML=
+    '<div class="chart-sec-lbl">月次推移（実績 vs 予算）</div>'
+    +'<div class="chart-wrap h280"><canvas id="mc1"></canvas></div>'
+    +'<div class="chart-row2" style="margin-top:18px">'
+      +'<div><div class="chart-sec-lbl">累計推移</div><div class="chart-wrap h220"><canvas id="mc2"></canvas></div></div>'
+      +'<div><div class="chart-sec-lbl">月次進捗率</div><div class="chart-wrap h220"><canvas id="mc3"></canvas></div></div>'
+    +'</div>'
+    +'<table class="modal-table"><thead><tr><th>月</th><th>実績 ('+row.unit+')</th><th>予算 ('+row.unit+')</th><th>差異</th><th>進捗率</th></tr></thead><tbody>'
+    +MONTHS.map(function(m,i){
+      var p=progs[i]; var sc=isNaN(p)?'var(--muted)':sigColor(sig(p));
+      var d=actArr[i]-budArr[i];
+      return '<tr><td>'+ML[i]+'</td><td>'+fmt(actArr[i])+'</td><td>'+fmt(budArr[i])+'</td>'
+        +'<td style="color:'+(d>=0?'var(--green)':'var(--red)')+'">'+fmt(d)+'</td>'
+        +'<td style="color:'+sc+';font-weight:700">'+fmtP(p)+'</td></tr>';
+    }).join('')+'</tbody></table>';
+
+  setTimeout(function(){
+    CHARTS.c1=new Chart(document.getElementById('mc1').getContext('2d'),{type:'bar',data:{labels:ML,datasets:[
+      {label:'予算',data:budArr,backgroundColor:'#1E406066',type:'bar'},
+      {label:'実績',data:actArr,backgroundColor:color+'bb',type:'bar'},
+      {label:'進捗率(%)',data:progs.map(function(p){return isNaN(p)?null:p;}),borderColor:'#FBBF2488',type:'line',yAxisID:'y2',tension:0.3,pointRadius:3,spanGaps:true}
+    ]},options:Object.assign(mkCOPT(),{scales:{
+      x:{ticks:{color:'#5577aa',font:{size:10}},grid:{color:'#121E2E'}},
+      y:{ticks:{color:'#5577aa',font:{size:10}},grid:{color:'#121E2E'},title:{display:true,text:row.unit,color:'#5577aa'}},
+      y2:{position:'right',ticks:{color:'#FBBF2466',callback:function(v){return v.toFixed(0)+'%';}},grid:{display:false}}
+    }})});
+    CHARTS.c2=new Chart(document.getElementById('mc2').getContext('2d'),{type:'line',data:{labels:ML,datasets:[
+      {label:'予算累計',data:cumB,borderColor:'#446688',backgroundColor:'#44668822',fill:true,tension:0.3},
+      {label:'実績累計',data:cumA,borderColor:color,backgroundColor:color+'22',fill:true,tension:0.3}
+    ]},options:mkCOPT()});
+    CHARTS.c3=new Chart(document.getElementById('mc3').getContext('2d'),{type:'bar',data:{labels:ML,datasets:[{label:'進捗率',
+      data:progs.map(function(p){return isNaN(p)?null:p;}),
+      backgroundColor:progs.map(function(p){return isNaN(p)?'#2a3858':p>=100?'#34D39988':p>=80?'#FBBF2488':'#F8717188';}),
+      borderColor:progs.map(function(p){return isNaN(p)?'#2a3858':p>=100?'#34D399':p>=80?'#FBBF24':'#F87171';}),borderWidth:1
+    }]},options:Object.assign(mkCOPT({plugins:{legend:{display:false}}}),{
+      scales:{x:{ticks:{color:'#5577aa',font:{size:10}},grid:{color:'#121E2E'}},
+              y:{ticks:{color:'#5577aa',font:{size:10},callback:function(v){return v+'%';}},grid:{color:'#121E2E'}}}})});
+  },30);
+}
+
+// ===== INIT =====
+function init(){
+  document.getElementById('updTime').textContent='更新: '+new Date().toLocaleDateString('ja-JP');
+  initPeriodSel();
+  renderHDGrid();
+  renderTable();
+}
+window.addEventListener('DOMContentLoaded',init);
+</script>
+</body>
+</html>
