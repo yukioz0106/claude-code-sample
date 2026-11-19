@@ -34,6 +34,10 @@ ai_company/
 
 詳細は [processes/task-intake.md](processes/task-intake.md) を参照。
 
+## プロジェクト計画
+
+- [人名記憶トレーニングアプリ](NAME_MEMORY_APP_PROJECT.md) — オリジナルキャラクターを使った人名記憶アプリのMVP、開発・検証ロードマップ、販売仮説
+
 ## 注意
 
 Lumina Worksは実在の企業ではなく、架空のロールプレイ用設定です。生成される提案・コピー・見積りなどはすべてフィクションであり、実際の事業判断の根拠にはしないでください。
