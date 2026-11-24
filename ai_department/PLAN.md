@@ -11,6 +11,7 @@
 - 組織体制の詳細: [org-chart.md](org-chart.md)
 - 各AI社員の役割定義: [roles/](roles/)
 - 業務フロー・ガバナンスの詳細: [processes/](processes/)
+- 継続的改善サイクルの導入計画: [processes/continuous-improvement.md](processes/continuous-improvement.md)
 
 ## 1. 目的・背景
 
