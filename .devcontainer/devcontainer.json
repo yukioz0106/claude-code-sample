@@ -1,8 +1,8 @@
 {
   "name": "${localWorkspaceFolderBasename}",
   "initializeCommand": [
-    "/bin/sh",
-    "${localWorkspaceFolder}/.devcontainer/prepare-build.sh"
+    //"/bin/sh",
+    //"${localWorkspaceFolder}/.devcontainer/prepare-build.sh"
   ],
   "build": {
     "dockerfile": "Containerfile",

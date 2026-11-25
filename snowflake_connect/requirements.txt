@@ -1,0 +1,5 @@
+snowflake-connector-python
+PyYAML
+requests
+python-dotenv
+pandas
